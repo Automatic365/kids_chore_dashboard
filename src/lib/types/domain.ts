@@ -110,6 +110,17 @@ export interface RewardClaimRow {
   rewardId: string;
   pointCost: number;
   claimedAt: string;
+  imageUrl?: string | null;
+}
+
+export interface RewardClaimEntry {
+  id: string;
+  rewardId: string;
+  title: string;
+  description: string;
+  pointCost: number;
+  claimedAt: string;
+  imageUrl: string | null;
 }
 
 export interface CreateRewardInput {
@@ -136,6 +147,7 @@ export interface ClaimRewardInput {
 export interface ClaimRewardResult {
   claimed: boolean;
   insufficientPoints: boolean;
+  alreadyClaimed: boolean;
   newPowerLevel: number;
   reward: Reward;
 }

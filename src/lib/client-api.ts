@@ -9,6 +9,7 @@ import {
   localDeleteMission,
   localDeleteProfile,
   localDeleteReward,
+  localGetRewardClaims,
   localGetMissionHistory,
   localGetMissions,
   localGetParentDashboard,
@@ -40,6 +41,7 @@ import {
   ParentDashboardData,
   Profile,
   Reward,
+  RewardClaimEntry,
   SquadGoal,
   SquadState,
   UncompletionResult,
@@ -337,6 +339,23 @@ export async function fetchRewards(): Promise<Reward[]> {
       return data.rewards;
     },
     () => localGetRewards(),
+  );
+}
+
+export async function fetchRewardClaims(
+  profileId: string,
+): Promise<RewardClaimEntry[]> {
+  return withFallback(
+    async () => {
+      const response = await fetch(
+        `/api/public/reward-claims?profileId=${encodeURIComponent(profileId)}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw new Error("Failed to load reward claims");
+      const data = (await response.json()) as { claims: RewardClaimEntry[] };
+      return data.claims;
+    },
+    () => localGetRewardClaims(profileId),
   );
 }
 

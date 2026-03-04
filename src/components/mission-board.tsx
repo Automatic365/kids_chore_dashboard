@@ -10,6 +10,7 @@ import {
   fetchMissionHistory,
   fetchMissions,
   fetchProfiles,
+  fetchRewardClaims,
   fetchRewards,
   fetchSquadState,
   isRemoteApiEnabled,
@@ -23,11 +24,13 @@ import {
   removeQueuedCompletionsForMission,
 } from "@/lib/offline/queue";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { AvatarDisplay } from "@/components/avatar-display";
 import {
   MissionHistoryEntry,
   MissionWithState,
   Profile,
   Reward,
+  RewardClaimEntry,
   SquadState,
 } from "@/lib/types/domain";
 import { getHeroLevel, getStreakBadge } from "@/lib/hero-levels";
@@ -90,7 +93,9 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
   const [missions, setMissions] = useState<MissionWithState[]>([]);
   const [squad, setSquad] = useState<SquadState | null>(null);
   const [rewards, setRewards] = useState<Reward[]>([]);
+  const [rewardClaims, setRewardClaims] = useState<RewardClaimEntry[]>([]);
   const [history, setHistory] = useState<MissionHistoryEntry[]>([]);
+  const [showTrophyCase, setShowTrophyCase] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,14 +122,21 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
     [profile],
   );
 
+  const claimedRewardIds = useMemo(
+    () => new Set(rewardClaims.map((claim) => claim.rewardId)),
+    [rewardClaims],
+  );
+
   const loadBoard = useCallback(async () => {
     try {
       setLoading(true);
-      const [profiles, missionRows, squadState, rewardRows, historyRows] = await Promise.all([
+      const [profiles, missionRows, squadState, rewardRows, rewardClaimRows, historyRows] =
+        await Promise.all([
         fetchProfiles(),
         fetchMissions(profileId),
         fetchSquadState(),
         fetchRewards(),
+        fetchRewardClaims(profileId),
         fetchMissionHistory(profileId, 7),
       ]);
 
@@ -133,6 +145,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
       setMissions(missionRows);
       setSquad(squadState);
       setRewards(rewardRows);
+      setRewardClaims(rewardClaimRows);
       setHistory(historyRows);
       setError(null);
     } catch (err) {
@@ -371,6 +384,9 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
       if (!profile) {
         return;
       }
+      if (claimedRewardIds.has(reward.id)) {
+        return;
+      }
       if (profile.powerLevel < reward.pointCost) {
         return;
       }
@@ -387,17 +403,19 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
           profileId,
           rewardId: reward.id,
         });
-        setProfile((current) =>
-          current ? { ...current, powerLevel: result.newPowerLevel } : current,
-        );
-        setEffectText("REWARD UNLOCKED!");
-        window.setTimeout(() => setEffectText(null), 1000);
+        if (result.claimed) {
+          setProfile((current) =>
+            current ? { ...current, powerLevel: result.newPowerLevel } : current,
+          );
+          setEffectText("REWARD UNLOCKED!");
+          window.setTimeout(() => setEffectText(null), 1000);
+        }
         await loadBoard();
       } catch {
         await loadBoard();
       }
     },
-    [loadBoard, profile, profileId],
+    [claimedRewardIds, loadBoard, profile, profileId],
   );
 
   const startLongPress = useCallback(() => {
@@ -639,7 +657,9 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
           <p className="text-sm font-bold text-white/80">No rewards available.</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {rewards.map((reward) => (
+            {rewards.map((reward) => {
+              const isClaimed = claimedRewardIds.has(reward.id);
+              return (
               <article
                 key={reward.id}
                 className="rounded-xl border-2 border-black bg-white p-3 text-black"
@@ -653,16 +673,66 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
                   <button
                     type="button"
                     onClick={() => void handleClaimReward(reward)}
-                    disabled={profile.powerLevel < reward.pointCost}
+                    disabled={isClaimed || profile.powerLevel < reward.pointCost}
                     className="rounded-lg border-2 border-black bg-[var(--hero-red)] px-3 py-1 text-xs font-black uppercase text-white disabled:opacity-50"
                   >
-                    Claim
+                    {isClaimed ? "Claimed" : "Claim"}
                   </button>
                 </div>
+                {isClaimed ? (
+                  <p className="mt-1 text-xs font-black uppercase text-emerald-700">
+                    Already claimed
+                  </p>
+                ) : null}
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
+      </section>
+
+      <section className="mt-4 rounded-2xl border-4 border-black bg-[var(--hero-blue)] p-4 text-white shadow-[6px_6px_0_#000]">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="rounded-md bg-black/40 px-2 py-1 text-lg font-black uppercase text-[var(--hero-yellow)]">
+            Trophy Case
+          </h2>
+          <p className="text-xs font-bold uppercase text-white/90">
+            {rewardClaims.length} Claimed
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowTrophyCase((current) => !current)}
+          className="w-full rounded-lg border-2 border-black bg-white px-3 py-2 text-sm font-black uppercase text-black"
+        >
+          {showTrophyCase ? "Hide Trophy Case" : "Show Trophy Case"}
+        </button>
+        {showTrophyCase ? (
+          rewardClaims.length === 0 ? (
+            <p className="mt-3 text-sm font-bold text-white/90">
+              Claim rewards to fill your trophy case.
+            </p>
+          ) : (
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              {rewardClaims.map((claim) => (
+                <article
+                  key={claim.id}
+                  className="rounded-xl border-2 border-black bg-white p-2 text-black"
+                >
+                  <AvatarDisplay
+                    avatarUrl={claim.imageUrl ?? ""}
+                    alt={`${claim.title} sticker`}
+                    className="mb-1 grid h-20 w-full place-items-center rounded-md border-2 border-black bg-[var(--hero-blue)]/20 object-cover text-2xl"
+                  />
+                  <p className="line-clamp-1 text-xs font-black uppercase">{claim.title}</p>
+                  <p className="mt-1 text-[10px] font-black uppercase text-zinc-600">
+                    {new Date(claim.claimedAt).toLocaleDateString()}
+                  </p>
+                </article>
+              ))}
+            </div>
+          )
+        ) : null}
       </section>
 
       <section className="mt-4 rounded-2xl border-4 border-black bg-black/45 p-4">

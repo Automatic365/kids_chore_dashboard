@@ -161,5 +161,10 @@ describe("local store completion rules", () => {
     expect(success.claimed).toBe(true);
     expect(success.insufficientPoints).toBe(false);
     expect(success.newPowerLevel).toBeGreaterThanOrEqual(0);
+
+    const claims = store.getRewardClaims("captain-alpha");
+    expect(claims.length).toBe(1);
+    expect(claims[0]?.title).toBe("Hero Sticker");
+    expect(claims[0]?.imageUrl?.startsWith("data:image/svg+xml")).toBe(true);
   });
 });

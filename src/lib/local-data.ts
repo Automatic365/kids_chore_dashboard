@@ -4,6 +4,7 @@ import { openDB } from "idb";
 
 import { clamp, toLocalDateString } from "@/lib/date";
 import { publicEnv } from "@/lib/public-env";
+import { generateRewardStickerDataUrl } from "@/lib/reward-art";
 import { sha256Hex } from "@/lib/security/hash-client";
 import {
   AwardSquadPowerInput,
@@ -21,6 +22,7 @@ import {
   ParentDashboardData,
   Profile,
   Reward,
+  RewardClaimEntry,
   SquadState,
   SquadGoal,
   UncompletionResult,
@@ -50,6 +52,7 @@ interface RewardClaimLocal {
   rewardId: string;
   pointCost: number;
   claimedAt: string;
+  imageUrl?: string | null;
 }
 
 interface MetaRow {
@@ -459,6 +462,48 @@ export async function localGetRewards(): Promise<Reward[]> {
 
   const rewards = (await db.getAll("rewards")) as Reward[];
   return rewards.sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+export async function localGetRewardClaims(
+  profileId: string,
+): Promise<RewardClaimEntry[]> {
+  const db = await getDb();
+  if (!db.objectStoreNames.contains("rewardClaims")) {
+    return [];
+  }
+
+  const [claims, rewards] = await Promise.all([
+    db.getAll("rewardClaims") as Promise<RewardClaimLocal[]>,
+    db.getAll("rewards") as Promise<Reward[]>,
+  ]);
+  const rewardById = new Map(rewards.map((reward) => [reward.id, reward]));
+  const profiles = (await db.getAll("profiles")) as StoredProfile[];
+  const heroByProfileId = new Map(
+    profiles.map((profile) => [profile.id, normalizeProfile(profile).heroName]),
+  );
+
+  return claims
+    .filter((claim) => claim.profileId === profileId)
+    .sort((a, b) => b.claimedAt.localeCompare(a.claimedAt))
+    .map((claim) => {
+      const reward = rewardById.get(claim.rewardId);
+      const imageUrl =
+        claim.imageUrl ??
+        generateRewardStickerDataUrl({
+          rewardTitle: reward?.title ?? "Reward",
+          heroName: heroByProfileId.get(claim.profileId) ?? "Hero",
+          claimedAt: claim.claimedAt,
+        });
+      return {
+        id: claim.id,
+        rewardId: claim.rewardId,
+        title: reward?.title ?? "Mystery Reward",
+        description: reward?.description ?? "Reward claimed",
+        pointCost: claim.pointCost,
+        claimedAt: claim.claimedAt,
+        imageUrl,
+      };
+    });
 }
 
 export async function localCompleteMission(
@@ -907,6 +952,23 @@ export async function localClaimReward(
     return {
       claimed: false,
       insufficientPoints: true,
+      alreadyClaimed: false,
+      newPowerLevel: profile.powerLevel,
+      reward,
+    };
+  }
+
+  const existingClaims = (await tx.objectStore("rewardClaims").getAll()) as RewardClaimLocal[];
+  if (
+    existingClaims.some(
+      (claim) => claim.profileId === input.profileId && claim.rewardId === input.rewardId,
+    )
+  ) {
+    await tx.done;
+    return {
+      claimed: false,
+      insufficientPoints: false,
+      alreadyClaimed: true,
       newPowerLevel: profile.powerLevel,
       reward,
     };
@@ -917,12 +979,18 @@ export async function localClaimReward(
     powerLevel: profile.powerLevel - reward.pointCost,
   };
 
+  const claimedAt = new Date().toISOString();
   const claim: RewardClaimLocal = {
     id: randomId(),
     profileId: input.profileId,
     rewardId: input.rewardId,
     pointCost: reward.pointCost,
-    claimedAt: new Date().toISOString(),
+    claimedAt,
+    imageUrl: generateRewardStickerDataUrl({
+      rewardTitle: reward.title,
+      heroName: profile.heroName,
+      claimedAt,
+    }),
   };
 
   await tx.objectStore("profiles").put(nextProfile);
@@ -932,6 +1000,7 @@ export async function localClaimReward(
   return {
     claimed: true,
     insufficientPoints: false,
+    alreadyClaimed: false,
     newPowerLevel: nextProfile.powerLevel,
     reward,
   };

@@ -19,6 +19,7 @@ import {
   ParentDashboardData,
   Profile,
   Reward,
+  RewardClaimEntry,
   SquadGoal,
   SquadState,
   UncompletionResult,
@@ -44,6 +45,7 @@ export interface Repository {
   updateReward(id: string, input: UpdateRewardInput): Promise<Reward>;
   deleteReward(id: string): Promise<void>;
   claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult>;
+  getRewardClaims(profileId: string): Promise<RewardClaimEntry[]>;
   setSquadGoal(goal: SquadGoal | null): Promise<SquadState>;
   getMissionHistory(profileId: string, days: number): Promise<MissionHistoryEntry[]>;
   verifyParentPin(pin: string): Promise<boolean>;
@@ -197,6 +199,10 @@ class LocalRepository implements Repository {
     return this.store.claimReward(input);
   }
 
+  async getRewardClaims(profileId: string): Promise<RewardClaimEntry[]> {
+    return this.store.getRewardClaims(profileId);
+  }
+
   async setSquadGoal(goal: SquadGoal | null): Promise<SquadState> {
     return this.store.setSquadGoal(goal);
   }
@@ -316,6 +322,11 @@ class SupabaseRepository implements Repository {
 
   async claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult> {
     void input;
+    throw new Error("Not implemented — requires Supabase migration");
+  }
+
+  async getRewardClaims(profileId: string): Promise<RewardClaimEntry[]> {
+    void profileId;
     throw new Error("Not implemented — requires Supabase migration");
   }
 

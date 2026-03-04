@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { clamp, toLocalDateString } from "@/lib/date";
 import { env } from "@/lib/env";
+import { generateRewardStickerDataUrl } from "@/lib/reward-art";
 import {
   AwardSquadPowerInput,
   ClaimRewardInput,
@@ -20,6 +21,7 @@ import {
   ParentDashboardData,
   Profile,
   Reward,
+  RewardClaimEntry,
   RewardClaimRow,
   SquadGoal,
   SquadState,
@@ -576,27 +578,76 @@ class LocalStore {
       return {
         claimed: false,
         insufficientPoints: true,
+        alreadyClaimed: false,
+        newPowerLevel: profile.powerLevel,
+        reward,
+      };
+    }
+
+    const existingClaim = this.state.rewardClaims.find(
+      (claim) => claim.profileId === input.profileId && claim.rewardId === input.rewardId,
+    );
+    if (existingClaim) {
+      return {
+        claimed: false,
+        insufficientPoints: false,
+        alreadyClaimed: true,
         newPowerLevel: profile.powerLevel,
         reward,
       };
     }
 
     profile.powerLevel -= reward.pointCost;
+    const claimedAt = new Date().toISOString();
     this.state.rewardClaims.push({
       id: randomUUID(),
       profileId: input.profileId,
       rewardId: input.rewardId,
       pointCost: reward.pointCost,
-      claimedAt: new Date().toISOString(),
+      claimedAt,
+      imageUrl: generateRewardStickerDataUrl({
+        rewardTitle: reward.title,
+        heroName: profile.heroName,
+        claimedAt,
+      }),
     });
     this.saveToDisk();
 
     return {
       claimed: true,
       insufficientPoints: false,
+      alreadyClaimed: false,
       newPowerLevel: profile.powerLevel,
       reward,
     };
+  }
+
+  getRewardClaims(profileId: string): RewardClaimEntry[] {
+    const rewardById = new Map(this.state.rewards.map((reward) => [reward.id, reward]));
+    return this.state.rewardClaims
+      .filter((claim) => claim.profileId === profileId)
+      .sort((a, b) => b.claimedAt.localeCompare(a.claimedAt))
+      .map((claim) => {
+        const reward = rewardById.get(claim.rewardId);
+        const imageUrl =
+          claim.imageUrl ??
+          generateRewardStickerDataUrl({
+            rewardTitle: reward?.title ?? "Reward",
+            heroName:
+              this.state.profiles.find((profile) => profile.id === claim.profileId)?.heroName ??
+              "Hero",
+            claimedAt: claim.claimedAt,
+          });
+        return {
+          id: claim.id,
+          rewardId: claim.rewardId,
+          title: reward?.title ?? "Mystery Reward",
+          description: reward?.description ?? "Reward claimed",
+          pointCost: claim.pointCost,
+          claimedAt: claim.claimedAt,
+          imageUrl,
+        };
+      });
   }
 
   awardSquadPower(input: AwardSquadPowerInput): SquadState {
