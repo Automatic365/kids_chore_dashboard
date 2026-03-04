@@ -6,19 +6,27 @@ import { clamp, toLocalDateString } from "@/lib/date";
 import { env } from "@/lib/env";
 import {
   AwardSquadPowerInput,
+  ClaimRewardInput,
+  ClaimRewardResult,
   CompletionResult,
   CreateMissionInput,
   CreateProfileInput,
+  CreateRewardInput,
   Mission,
+  MissionHistoryEntry,
   MissionCompletionRequest,
   MissionUncompletionRequest,
   MissionWithState,
   ParentDashboardData,
   Profile,
+  Reward,
+  RewardClaimRow,
+  SquadGoal,
   SquadState,
   UncompletionResult,
   UpdateMissionInput,
   UpdateProfileInput,
+  UpdateRewardInput,
 } from "@/lib/types/domain";
 import { hashPin, verifyPin } from "@/lib/server/pin";
 
@@ -39,6 +47,8 @@ interface LocalState {
   profiles: Profile[];
   missions: Mission[];
   missionHistory: MissionHistoryRow[];
+  rewards: Reward[];
+  rewardClaims: RewardClaimRow[];
   squad: SquadState;
   parentPinHash: string;
 }
@@ -51,6 +61,8 @@ function defaultProfiles(): Profile[] {
       avatarUrl: "/avatars/captain.svg",
       uiMode: "text",
       powerLevel: 0,
+      currentStreak: 0,
+      lastStreakDate: null,
     },
     {
       id: "super-tot",
@@ -58,6 +70,8 @@ function defaultProfiles(): Profile[] {
       avatarUrl: "/avatars/super.svg",
       uiMode: "picture",
       powerLevel: 0,
+      currentStreak: 0,
+      lastStreakDate: null,
     },
   ];
 }
@@ -139,17 +153,61 @@ function defaultMissions(): Mission[] {
   ];
 }
 
+function defaultRewards(): Reward[] {
+  return [
+    {
+      id: "r1",
+      title: "Hero Sticker",
+      description: "Pick one sticker from Mission Command.",
+      pointCost: 25,
+      isActive: true,
+      sortOrder: 1,
+    },
+    {
+      id: "r2",
+      title: "Comic Break",
+      description: "15 minutes of comic or story time.",
+      pointCost: 40,
+      isActive: true,
+      sortOrder: 2,
+    },
+  ];
+}
+
 function initialState(): LocalState {
   return {
     profiles: defaultProfiles(),
     missions: defaultMissions(),
     missionHistory: [],
+    rewards: defaultRewards(),
+    rewardClaims: [],
     squad: {
       squadPowerCurrent: 0,
       squadPowerMax: 100,
       cycleDate: toLocalDateString(new Date(), env.appTimeZone),
+      squadGoal: null,
     },
     parentPinHash: env.parentPinHash || hashPin(env.parentPinPlain),
+  };
+}
+
+function normalizeLoadedState(state: LocalState): LocalState {
+  return {
+    ...state,
+    profiles: (state.profiles ?? []).map((profile) => ({
+      ...profile,
+      currentStreak: profile.currentStreak ?? 0,
+      lastStreakDate: profile.lastStreakDate ?? null,
+    })),
+    rewards:
+      state.rewards && state.rewards.length > 0
+        ? state.rewards
+        : defaultRewards(),
+    rewardClaims: state.rewardClaims ?? [],
+    squad: {
+      ...state.squad,
+      squadGoal: state.squad?.squadGoal ?? null,
+    },
   };
 }
 
@@ -164,7 +222,7 @@ class LocalStore {
     try {
       if (existsSync(STORE_FILE)) {
         const raw = readFileSync(STORE_FILE, "utf8");
-        return JSON.parse(raw) as LocalState;
+        return normalizeLoadedState(JSON.parse(raw) as LocalState);
       }
     } catch {
       // ignore read errors — fall through to defaults
@@ -188,12 +246,23 @@ class LocalStore {
     return new Set(completedMissionIds);
   }
 
+  private getPreviousDate(dateString: string): string {
+    const date = new Date(`${dateString}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() - 1);
+    return date.toISOString().slice(0, 10);
+  }
+
   getProfiles(): Profile[] {
     return [...this.state.profiles];
   }
 
   getSquadState(): SquadState {
-    return { ...this.state.squad };
+    return {
+      ...this.state.squad,
+      squadGoal: this.state.squad.squadGoal
+        ? { ...this.state.squad.squadGoal }
+        : null,
+    };
   }
 
   getMissions(profileId?: string): MissionWithState[] {
@@ -267,6 +336,12 @@ class LocalStore {
       };
     }
 
+    const hadCompletionTodayBefore = this.state.missionHistory.some(
+      (item) =>
+        item.profileId === input.profileId &&
+        item.completedOnLocalDate === this.state.squad.cycleDate,
+    );
+
     this.state.missionHistory.push({
       id: randomUUID(),
       missionId: mission.id,
@@ -280,6 +355,16 @@ class LocalStore {
     const profile = this.state.profiles.find((item) => item.id === input.profileId);
     if (!profile) {
       throw new Error("Profile not found");
+    }
+
+    if (!hadCompletionTodayBefore) {
+      const yesterday = this.getPreviousDate(this.state.squad.cycleDate);
+      if (profile.lastStreakDate === yesterday) {
+        profile.currentStreak += 1;
+      } else if (profile.lastStreakDate !== this.state.squad.cycleDate) {
+        profile.currentStreak = 1;
+      }
+      profile.lastStreakDate = this.state.squad.cycleDate;
     }
 
     profile.powerLevel += mission.powerValue;
@@ -433,12 +518,99 @@ class LocalStore {
     return { ...mission };
   }
 
+  getRewards(): Reward[] {
+    return [...this.state.rewards].sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  createReward(input: CreateRewardInput): Reward {
+    const reward: Reward = {
+      id: randomUUID(),
+      title: input.title,
+      description: input.description,
+      pointCost: input.pointCost,
+      isActive: input.isActive ?? true,
+      sortOrder: input.sortOrder ?? this.state.rewards.length + 1,
+    };
+    this.state.rewards.push(reward);
+    this.saveToDisk();
+    return reward;
+  }
+
+  updateReward(id: string, input: UpdateRewardInput): Reward {
+    const reward = this.state.rewards.find((item) => item.id === id);
+    if (!reward) {
+      throw new Error("Reward not found");
+    }
+
+    if (input.title !== undefined) reward.title = input.title;
+    if (input.description !== undefined) reward.description = input.description;
+    if (input.pointCost !== undefined) reward.pointCost = input.pointCost;
+    if (input.isActive !== undefined) reward.isActive = input.isActive;
+    if (input.sortOrder !== undefined) reward.sortOrder = input.sortOrder;
+    this.saveToDisk();
+    return { ...reward };
+  }
+
+  deleteReward(id: string): void {
+    const idx = this.state.rewards.findIndex((item) => item.id === id);
+    if (idx === -1) {
+      throw new Error("Reward not found");
+    }
+
+    this.state.rewards.splice(idx, 1);
+    this.saveToDisk();
+  }
+
+  claimReward(input: ClaimRewardInput): ClaimRewardResult {
+    const reward = this.state.rewards.find((item) => item.id === input.rewardId);
+    if (!reward || !reward.isActive) {
+      throw new Error("Reward unavailable");
+    }
+
+    const profile = this.state.profiles.find((item) => item.id === input.profileId);
+    if (!profile) {
+      throw new Error("Profile not found");
+    }
+
+    if (profile.powerLevel < reward.pointCost) {
+      return {
+        claimed: false,
+        insufficientPoints: true,
+        newPowerLevel: profile.powerLevel,
+        reward,
+      };
+    }
+
+    profile.powerLevel -= reward.pointCost;
+    this.state.rewardClaims.push({
+      id: randomUUID(),
+      profileId: input.profileId,
+      rewardId: input.rewardId,
+      pointCost: reward.pointCost,
+      claimedAt: new Date().toISOString(),
+    });
+    this.saveToDisk();
+
+    return {
+      claimed: true,
+      insufficientPoints: false,
+      newPowerLevel: profile.powerLevel,
+      reward,
+    };
+  }
+
   awardSquadPower(input: AwardSquadPowerInput): SquadState {
     this.state.squad.squadPowerCurrent = clamp(
       this.state.squad.squadPowerCurrent + input.delta,
       0,
       this.state.squad.squadPowerMax,
     );
+    this.saveToDisk();
+    return this.getSquadState();
+  }
+
+  setSquadGoal(goal: SquadGoal | null): SquadState {
+    this.state.squad.squadGoal = goal ? { ...goal } : null;
     this.saveToDisk();
     return this.getSquadState();
   }
@@ -458,6 +630,7 @@ class LocalStore {
       missions: this.getMissions(),
       trashedMissions: this.getTrashedMissions(),
       squad: this.getSquadState(),
+      rewards: this.getRewards(),
     };
   }
 
@@ -467,6 +640,32 @@ class LocalStore {
     return this.getSquadState();
   }
 
+  getMissionHistory(profileId: string, days: number): MissionHistoryEntry[] {
+    const start = new Date(`${this.state.squad.cycleDate}T00:00:00.000Z`);
+    start.setUTCDate(start.getUTCDate() - Math.max(0, days - 1));
+    const minDate = start.toISOString().slice(0, 10);
+
+    const missionTitleById = new Map(this.state.missions.map((mission) => [mission.id, mission.title]));
+    const grouped = new Map<string, Array<{ title: string; powerAwarded: number }>>();
+
+    for (const row of this.state.missionHistory) {
+      if (row.profileId !== profileId || row.completedOnLocalDate < minDate) {
+        continue;
+      }
+
+      const group = grouped.get(row.completedOnLocalDate) ?? [];
+      group.push({
+        title: missionTitleById.get(row.missionId) ?? "Mission",
+        powerAwarded: row.pointsAwarded,
+      });
+      grouped.set(row.completedOnLocalDate, group);
+    }
+
+    return Array.from(grouped.entries())
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([date, missions]) => ({ date, missions }));
+  }
+
   createProfile(input: CreateProfileInput): Profile {
     const profile: Profile = {
       id: randomUUID(),
@@ -474,6 +673,8 @@ class LocalStore {
       avatarUrl: input.avatarUrl,
       uiMode: input.uiMode,
       powerLevel: 0,
+      currentStreak: 0,
+      lastStreakDate: null,
     };
     this.state.profiles.push(profile);
     this.saveToDisk();
@@ -496,14 +697,13 @@ class LocalStore {
     const profileIndex = this.state.profiles.findIndex((p) => p.id === id);
     if (profileIndex === -1) throw new Error("Profile not found");
 
-    // soft-delete all missions for this profile
-    const now = new Date().toISOString();
-    for (const mission of this.state.missions) {
-      if (mission.profileId === id && mission.deletedAt === null) {
-        mission.isActive = false;
-        mission.deletedAt = now;
-      }
-    }
+    this.state.missions = this.state.missions.filter((mission) => mission.profileId !== id);
+    this.state.missionHistory = this.state.missionHistory.filter(
+      (row) => row.profileId !== id,
+    );
+    this.state.rewardClaims = this.state.rewardClaims.filter(
+      (row) => row.profileId !== id,
+    );
 
     this.state.profiles.splice(profileIndex, 1);
     this.saveToDisk();

@@ -5,9 +5,11 @@ import { useState } from "react";
 import {
   createProfile as createProfileRequest,
   deleteProfile as deleteProfileRequest,
+  generateAvatar,
   updateProfile as updateProfileRequest,
 } from "@/lib/client-api";
 import { Profile, UiMode } from "@/lib/types/domain";
+import { AvatarDisplay } from "@/components/avatar-display";
 import { ImagePicker } from "@/components/parent/image-picker";
 
 interface ProfileManagerSectionProps {
@@ -30,6 +32,9 @@ export function ProfileManagerSection({
   const [newAvatar, setNewAvatar] = useState("/avatars/captain.svg");
   const [newMode, setNewMode] = useState<UiMode>("text");
   const [creating, setCreating] = useState(false);
+  const [generatingAvatarForId, setGeneratingAvatarForId] = useState<string | null>(
+    null,
+  );
 
   function startEdit(profile: Profile) {
     setEditId(profile.id);
@@ -63,7 +68,7 @@ export function ProfileManagerSection({
 
   async function handleDelete(profile: Profile) {
     const confirmed = window.confirm(
-      `Remove "${profile.heroName}"? All their missions will be trashed.`,
+      `Remove "${profile.heroName}"? This permanently deletes the hero and all their missions.`,
     );
     if (!confirmed) return;
 
@@ -98,6 +103,20 @@ export function ProfileManagerSection({
     }
   }
 
+  async function handleGenerateEditAvatar() {
+    if (!editId || !editName.trim()) return;
+    setGeneratingAvatarForId(editId);
+    try {
+      const value = await generateAvatar(editName.trim());
+      setEditAvatar(value);
+      pushToast("success", "Avatar generated.");
+    } catch {
+      pushToast("error", "Avatar generation failed.");
+    } finally {
+      setGeneratingAvatarForId(null);
+    }
+  }
+
   return (
     <section className="comic-card p-4">
       <h2 className="text-xl font-black uppercase text-white">Heroes</h2>
@@ -116,6 +135,16 @@ export function ProfileManagerSection({
                 className="rounded-lg border-2 border-black px-3 py-2"
               />
               <ImagePicker value={editAvatar} onChange={setEditAvatar} placeholder="Avatar URL" />
+              <button
+                type="button"
+                onClick={() => void handleGenerateEditAvatar()}
+                disabled={generatingAvatarForId === profile.id}
+                className="rounded-lg border-2 border-black bg-[var(--hero-yellow)] px-3 py-2 text-xs font-black uppercase text-black disabled:opacity-60"
+              >
+                {generatingAvatarForId === profile.id
+                  ? "Generating Avatar..."
+                  : "AI Generate Avatar"}
+              </button>
               <select
                 value={editMode}
                 onChange={(e) => setEditMode(e.target.value as UiMode)}
@@ -148,11 +177,10 @@ export function ProfileManagerSection({
               className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-black bg-white p-3 text-black"
             >
               <div className="flex items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={profile.avatarUrl}
+                <AvatarDisplay
+                  avatarUrl={profile.avatarUrl}
                   alt={profile.heroName}
-                  className="h-10 w-10 rounded-lg border-2 border-black object-cover"
+                  className="grid h-10 w-10 place-items-center rounded-lg border-2 border-black bg-white object-cover text-xl"
                 />
                 <div>
                   <p className="font-black uppercase">{profile.heroName}</p>

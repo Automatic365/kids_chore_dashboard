@@ -7,19 +7,26 @@ import { publicEnv } from "@/lib/public-env";
 import { sha256Hex } from "@/lib/security/hash-client";
 import {
   AwardSquadPowerInput,
+  ClaimRewardInput,
+  ClaimRewardResult,
   CompletionResult,
   CreateMissionInput,
   CreateProfileInput,
+  CreateRewardInput,
   Mission,
+  MissionHistoryEntry,
   MissionCompletionRequest,
   MissionUncompletionRequest,
   MissionWithState,
   ParentDashboardData,
   Profile,
+  Reward,
   SquadState,
+  SquadGoal,
   UncompletionResult,
   UpdateMissionInput,
   UpdateProfileInput,
+  UpdateRewardInput,
 } from "@/lib/types/domain";
 
 interface MissionHistoryLocal {
@@ -37,13 +44,21 @@ interface ParentSettingsLocal {
   updatedAt: string;
 }
 
+interface RewardClaimLocal {
+  id: string;
+  profileId: string;
+  rewardId: string;
+  pointCost: number;
+  claimedAt: string;
+}
+
 interface MetaRow {
-  key: "squad" | "parent_settings";
-  value: SquadState | ParentSettingsLocal;
+  key: "squad" | "parent_settings" | "squad_goal";
+  value: SquadState | ParentSettingsLocal | SquadGoal | null;
 }
 
 const DB_NAME = "hero-habits-local";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SESSION_KEY = "herohabits-parent-session-exp";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 8;
 
@@ -57,6 +72,8 @@ const defaultProfiles: Profile[] = [
     avatarUrl: "/avatars/captain.svg",
     uiMode: "text",
     powerLevel: 0,
+    currentStreak: 0,
+    lastStreakDate: null,
   },
   {
     id: "super-tot",
@@ -64,6 +81,8 @@ const defaultProfiles: Profile[] = [
     avatarUrl: "/avatars/super.svg",
     uiMode: "picture",
     powerLevel: 0,
+    currentStreak: 0,
+    lastStreakDate: null,
   },
 ];
 
@@ -142,10 +161,34 @@ const defaultMissions: Mission[] = [
   },
 ];
 
+const defaultRewards: Reward[] = [
+  {
+    id: "r1",
+    title: "Hero Sticker",
+    description: "Pick one sticker from Mission Command.",
+    pointCost: 25,
+    isActive: true,
+    sortOrder: 1,
+  },
+  {
+    id: "r2",
+    title: "Comic Break",
+    description: "15 minutes of comic or story time.",
+    pointCost: 40,
+    isActive: true,
+    sortOrder: 2,
+  },
+];
+
 type StoredMission = Omit<Mission, "recurringDaily" | "instructions"> & {
   recurringDaily?: boolean;
   instructions?: string;
   deletedAt?: string | null;
+};
+
+type StoredProfile = Omit<Profile, "currentStreak" | "lastStreakDate"> & {
+  currentStreak?: number;
+  lastStreakDate?: string | null;
 };
 
 function normalizeMission(mission: StoredMission): Mission {
@@ -157,6 +200,14 @@ function normalizeMission(mission: StoredMission): Mission {
   };
 }
 
+function normalizeProfile(profile: StoredProfile): Profile {
+  return {
+    ...profile,
+    currentStreak: profile.currentStreak ?? 0,
+    lastStreakDate: profile.lastStreakDate ?? null,
+  };
+}
+
 function randomId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -165,24 +216,41 @@ function randomId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function previousDate(dateString: string): string {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
 async function getDb() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        const profiles = db.createObjectStore("profiles", { keyPath: "id" });
-        profiles.createIndex("by-name", "heroName");
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const profiles = db.createObjectStore("profiles", { keyPath: "id" });
+          profiles.createIndex("by-name", "heroName");
 
-        const missions = db.createObjectStore("missions", { keyPath: "id" });
-        missions.createIndex("by-profile", "profileId");
+          const missions = db.createObjectStore("missions", { keyPath: "id" });
+          missions.createIndex("by-profile", "profileId");
 
-        const history = db.createObjectStore("missionHistory", { keyPath: "id" });
-        history.createIndex("by-client-request-id", "clientRequestId", {
-          unique: true,
-        });
-        history.createIndex("by-cycle-date", "completedOnLocalDate");
-        history.createIndex("by-mission-cycle", ["missionId", "completedOnLocalDate"]);
+          const history = db.createObjectStore("missionHistory", { keyPath: "id" });
+          history.createIndex("by-client-request-id", "clientRequestId", {
+            unique: true,
+          });
+          history.createIndex("by-cycle-date", "completedOnLocalDate");
+          history.createIndex("by-mission-cycle", ["missionId", "completedOnLocalDate"]);
 
-        db.createObjectStore("meta", { keyPath: "key" });
+          db.createObjectStore("meta", { keyPath: "key" });
+        }
+
+        if (oldVersion < 2) {
+          if (!db.objectStoreNames.contains("rewards")) {
+            db.createObjectStore("rewards", { keyPath: "id" });
+          }
+          if (!db.objectStoreNames.contains("rewardClaims")) {
+            db.createObjectStore("rewardClaims", { keyPath: "id" });
+          }
+        }
       },
     });
   }
@@ -203,6 +271,16 @@ async function ensureSeeded(db: Awaited<ReturnType<typeof openDB>>) {
 
   const profileCount = await db.count("profiles");
   if (profileCount > 0) {
+    if (db.objectStoreNames.contains("rewards")) {
+      const rewardCount = await db.count("rewards");
+      if (rewardCount === 0) {
+        const tx = db.transaction("rewards", "readwrite");
+        for (const reward of defaultRewards) {
+          await tx.store.put(reward);
+        }
+        await tx.done;
+      }
+    }
     seeded = true;
     return;
   }
@@ -213,7 +291,10 @@ async function ensureSeeded(db: Awaited<ReturnType<typeof openDB>>) {
       ? publicEnv.parentPinHash
       : await hashPin(publicEnv.parentPinPlain);
 
-  const tx = db.transaction(["profiles", "missions", "meta"], "readwrite");
+  const tx = db.transaction(
+    ["profiles", "missions", "meta", "rewards", "rewardClaims"],
+    "readwrite",
+  );
 
   for (const profile of defaultProfiles) {
     await tx.objectStore("profiles").put(profile);
@@ -223,10 +304,15 @@ async function ensureSeeded(db: Awaited<ReturnType<typeof openDB>>) {
     await tx.objectStore("missions").put(mission);
   }
 
+  for (const reward of defaultRewards) {
+    await tx.objectStore("rewards").put(reward);
+  }
+
   const squad: SquadState = {
     squadPowerCurrent: 0,
     squadPowerMax: 100,
     cycleDate: today,
+    squadGoal: null,
   };
 
   const parentSettings: ParentSettingsLocal = {
@@ -257,10 +343,15 @@ async function setMetaValue(
 }
 
 async function ensureCurrentCycle(db: Awaited<ReturnType<typeof openDB>>): Promise<SquadState> {
-  const squad = (await getMetaValue<SquadState>(db, "squad")) ?? {
+  const squadRaw = (await getMetaValue<SquadState>(db, "squad")) ?? {
     squadPowerCurrent: 0,
     squadPowerMax: 100,
     cycleDate: toLocalDateString(new Date(), publicEnv.appTimeZone),
+    squadGoal: null,
+  };
+  const squad: SquadState = {
+    ...squadRaw,
+    squadGoal: squadRaw.squadGoal ?? null,
   };
 
   const today = toLocalDateString(new Date(), publicEnv.appTimeZone);
@@ -304,8 +395,10 @@ export function clearParentSession(): void {
 
 export async function localGetProfiles(): Promise<Profile[]> {
   const db = await getDb();
-  const profiles = (await db.getAll("profiles")) as Profile[];
-  return profiles.sort((a, b) => a.heroName.localeCompare(b.heroName));
+  const profiles = (await db.getAll("profiles")) as StoredProfile[];
+  return profiles
+    .map(normalizeProfile)
+    .sort((a, b) => a.heroName.localeCompare(b.heroName));
 }
 
 export async function localGetSquadState(): Promise<SquadState> {
@@ -358,6 +451,16 @@ export async function localGetTrashedMissions(): Promise<MissionWithState[]> {
     }));
 }
 
+export async function localGetRewards(): Promise<Reward[]> {
+  const db = await getDb();
+  if (!db.objectStoreNames.contains("rewards")) {
+    return [];
+  }
+
+  const rewards = (await db.getAll("rewards")) as Reward[];
+  return rewards.sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
 export async function localCompleteMission(
   input: MissionCompletionRequest,
 ): Promise<CompletionResult> {
@@ -374,7 +477,10 @@ export async function localCompleteMission(
     .get(input.clientRequestId)) as MissionHistoryLocal | undefined;
 
   if (existingRequest) {
-    const profile = (await tx.objectStore("profiles").get(input.profileId)) as Profile;
+    const profileRow = (await tx.objectStore("profiles").get(
+      input.profileId,
+    )) as StoredProfile;
+    const profile = profileRow ? normalizeProfile(profileRow) : undefined;
     await tx.done;
 
     return {
@@ -412,7 +518,10 @@ export async function localCompleteMission(
   }
 
   if (completed) {
-    const profile = (await tx.objectStore("profiles").get(input.profileId)) as Profile;
+    const profileRow = (await tx.objectStore("profiles").get(
+      input.profileId,
+    )) as StoredProfile;
+    const profile = profileRow ? normalizeProfile(profileRow) : undefined;
     await tx.done;
 
     return {
@@ -424,16 +533,34 @@ export async function localCompleteMission(
     };
   }
 
-  const profile = (await tx.objectStore("profiles").get(input.profileId)) as Profile | undefined;
+  const profileRow = (await tx.objectStore("profiles").get(
+    input.profileId,
+  )) as StoredProfile | undefined;
+  const profile = profileRow ? normalizeProfile(profileRow) : undefined;
   if (!profile) {
     await tx.done;
     throw new Error("Profile not found");
   }
 
+  const hadCompletionTodayBefore = (await tx.objectStore("missionHistory").getAll()).some(
+    (row: MissionHistoryLocal) =>
+      row.profileId === input.profileId && row.completedOnLocalDate === squad.cycleDate,
+  );
+
   const nextProfile: Profile = {
     ...profile,
     powerLevel: profile.powerLevel + mission.powerValue,
   };
+
+  if (!hadCompletionTodayBefore) {
+    const yesterday = previousDate(squad.cycleDate);
+    if (nextProfile.lastStreakDate === yesterday) {
+      nextProfile.currentStreak += 1;
+    } else if (nextProfile.lastStreakDate !== squad.cycleDate) {
+      nextProfile.currentStreak = 1;
+    }
+    nextProfile.lastStreakDate = squad.cycleDate;
+  }
 
   const nextSquad: SquadState = {
     ...squad,
@@ -504,7 +631,10 @@ export async function localUncompleteMission(
     .sort((a, b) => b.completedAt.localeCompare(a.completedAt));
   const targetRow = matchingRows[0];
 
-  const profile = (await tx.objectStore("profiles").get(input.profileId)) as Profile | undefined;
+  const profileRow = (await tx.objectStore("profiles").get(
+    input.profileId,
+  )) as StoredProfile | undefined;
+  const profile = profileRow ? normalizeProfile(profileRow) : undefined;
   if (!profile) {
     await tx.done;
     throw new Error("Profile not found");
@@ -583,14 +713,15 @@ function assertParentSession() {
 export async function localGetParentDashboard(): Promise<ParentDashboardData> {
   assertParentSession();
 
-  const [profiles, missions, trashedMissions, squad] = await Promise.all([
+  const [profiles, missions, trashedMissions, squad, rewards] = await Promise.all([
     localGetProfiles(),
     localGetMissions(),
     localGetTrashedMissions(),
     localGetSquadState(),
+    localGetRewards(),
   ]);
 
-  return { profiles, missions, trashedMissions, squad };
+  return { profiles, missions, trashedMissions, squad, rewards };
 }
 
 export async function localCreateMission(input: CreateMissionInput): Promise<Mission> {
@@ -694,6 +825,118 @@ export async function localRestoreMission(id: string): Promise<Mission> {
   return next;
 }
 
+export async function localCreateReward(input: CreateRewardInput): Promise<Reward> {
+  assertParentSession();
+
+  const db = await getDb();
+  const rewards = await localGetRewards();
+  const reward: Reward = {
+    id: randomId(),
+    title: input.title,
+    description: input.description,
+    pointCost: input.pointCost,
+    isActive: input.isActive ?? true,
+    sortOrder: input.sortOrder ?? rewards.length + 1,
+  };
+  await db.put("rewards", reward);
+  return reward;
+}
+
+export async function localUpdateReward(
+  id: string,
+  input: UpdateRewardInput,
+): Promise<Reward> {
+  assertParentSession();
+
+  const db = await getDb();
+  const reward = (await db.get("rewards", id)) as Reward | undefined;
+  if (!reward) {
+    throw new Error("Reward not found");
+  }
+
+  const next: Reward = {
+    ...reward,
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.pointCost !== undefined ? { pointCost: input.pointCost } : {}),
+    ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+    ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+  };
+
+  await db.put("rewards", next);
+  return next;
+}
+
+export async function localDeleteReward(id: string): Promise<void> {
+  assertParentSession();
+
+  const db = await getDb();
+  const reward = await db.get("rewards", id);
+  if (!reward) {
+    throw new Error("Reward not found");
+  }
+  await db.delete("rewards", id);
+}
+
+export async function localClaimReward(
+  input: ClaimRewardInput,
+): Promise<ClaimRewardResult> {
+  const db = await getDb();
+  const tx = db.transaction(
+    ["profiles", "rewards", "rewardClaims"],
+    "readwrite",
+  );
+
+  const profileRow = (await tx.objectStore("profiles").get(
+    input.profileId,
+  )) as StoredProfile | undefined;
+  const profile = profileRow ? normalizeProfile(profileRow) : undefined;
+  if (!profile) {
+    await tx.done;
+    throw new Error("Profile not found");
+  }
+
+  const reward = (await tx.objectStore("rewards").get(input.rewardId)) as Reward | undefined;
+  if (!reward || !reward.isActive) {
+    await tx.done;
+    throw new Error("Reward unavailable");
+  }
+
+  if (profile.powerLevel < reward.pointCost) {
+    await tx.done;
+    return {
+      claimed: false,
+      insufficientPoints: true,
+      newPowerLevel: profile.powerLevel,
+      reward,
+    };
+  }
+
+  const nextProfile: Profile = {
+    ...profile,
+    powerLevel: profile.powerLevel - reward.pointCost,
+  };
+
+  const claim: RewardClaimLocal = {
+    id: randomId(),
+    profileId: input.profileId,
+    rewardId: input.rewardId,
+    pointCost: reward.pointCost,
+    claimedAt: new Date().toISOString(),
+  };
+
+  await tx.objectStore("profiles").put(nextProfile);
+  await tx.objectStore("rewardClaims").put(claim);
+  await tx.done;
+
+  return {
+    claimed: true,
+    insufficientPoints: false,
+    newPowerLevel: nextProfile.powerLevel,
+    reward,
+  };
+}
+
 export async function localAwardSquadPower(
   input: AwardSquadPowerInput,
 ): Promise<SquadState> {
@@ -715,6 +958,19 @@ export async function localAwardSquadPower(
   return nextSquad;
 }
 
+export async function localSetSquadGoal(goal: SquadGoal | null): Promise<SquadState> {
+  assertParentSession();
+
+  const db = await getDb();
+  const squad = await ensureCurrentCycle(db);
+  const next: SquadState = {
+    ...squad,
+    squadGoal: goal ? { ...goal } : null,
+  };
+  await setMetaValue(db, "squad", next);
+  return next;
+}
+
 export async function localLogoutParent(): Promise<void> {
   clearParentSession();
 }
@@ -729,6 +985,41 @@ export async function localResetDaily(cycleDate: string): Promise<SquadState> {
   return next;
 }
 
+export async function localGetMissionHistory(
+  profileId: string,
+  days: number,
+): Promise<MissionHistoryEntry[]> {
+  const db = await getDb();
+  const squad = await ensureCurrentCycle(db);
+  const missionRows = ((await db.getAll("missions")) as StoredMission[]).map(
+    normalizeMission,
+  );
+  const titleById = new Map(missionRows.map((mission) => [mission.id, mission.title]));
+
+  const allHistory = (await db.getAll("missionHistory")) as MissionHistoryLocal[];
+  const start = new Date(`${squad.cycleDate}T00:00:00.000Z`);
+  start.setUTCDate(start.getUTCDate() - Math.max(0, days - 1));
+  const minDate = start.toISOString().slice(0, 10);
+
+  const grouped = new Map<string, Array<{ title: string; powerAwarded: number }>>();
+  for (const row of allHistory) {
+    if (row.profileId !== profileId || row.completedOnLocalDate < minDate) {
+      continue;
+    }
+
+    const list = grouped.get(row.completedOnLocalDate) ?? [];
+    list.push({
+      title: titleById.get(row.missionId) ?? "Mission",
+      powerAwarded: row.pointsAwarded,
+    });
+    grouped.set(row.completedOnLocalDate, list);
+  }
+
+  return Array.from(grouped.entries())
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([date, missions]) => ({ date, missions }));
+}
+
 export async function localCreateProfile(input: CreateProfileInput): Promise<Profile> {
   assertParentSession();
 
@@ -739,6 +1030,8 @@ export async function localCreateProfile(input: CreateProfileInput): Promise<Pro
     avatarUrl: input.avatarUrl,
     uiMode: input.uiMode,
     powerLevel: 0,
+    currentStreak: 0,
+    lastStreakDate: null,
   };
   await db.put("profiles", profile);
   return profile;
@@ -751,7 +1044,8 @@ export async function localUpdateProfile(
   assertParentSession();
 
   const db = await getDb();
-  const profile = (await db.get("profiles", id)) as Profile | undefined;
+  const profileRow = (await db.get("profiles", id)) as StoredProfile | undefined;
+  const profile = profileRow ? normalizeProfile(profileRow) : undefined;
   if (!profile) throw new Error("Profile not found");
 
   const next: Profile = {
@@ -769,7 +1063,10 @@ export async function localDeleteProfile(id: string): Promise<void> {
   assertParentSession();
 
   const db = await getDb();
-  const tx = db.transaction(["profiles", "missions"], "readwrite");
+  const tx = db.transaction(
+    ["profiles", "missions", "missionHistory", "rewardClaims"],
+    "readwrite",
+  );
 
   const profile = await tx.objectStore("profiles").get(id);
   if (!profile) {
@@ -777,12 +1074,24 @@ export async function localDeleteProfile(id: string): Promise<void> {
     throw new Error("Profile not found");
   }
 
-  // soft-delete all missions for this profile
   const allMissions = (await tx.objectStore("missions").getAll()) as StoredMission[];
-  const now = new Date().toISOString();
   for (const m of allMissions) {
-    if (m.profileId === id && !m.deletedAt) {
-      await tx.objectStore("missions").put({ ...normalizeMission(m), isActive: false, deletedAt: now });
+    if (m.profileId === id) {
+      await tx.objectStore("missions").delete(m.id);
+    }
+  }
+
+  const allHistory = (await tx.objectStore("missionHistory").getAll()) as MissionHistoryLocal[];
+  for (const row of allHistory) {
+    if (row.profileId === id) {
+      await tx.objectStore("missionHistory").delete(row.id);
+    }
+  }
+
+  const allClaims = (await tx.objectStore("rewardClaims").getAll()) as RewardClaimLocal[];
+  for (const claim of allClaims) {
+    if (claim.profileId === id) {
+      await tx.objectStore("rewardClaims").delete(claim.id);
     }
   }
 

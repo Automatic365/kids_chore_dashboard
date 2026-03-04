@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  claimReward,
   completeMission,
+  fetchMissionHistory,
   fetchMissions,
   fetchProfiles,
+  fetchRewards,
   fetchSquadState,
   isRemoteApiEnabled,
   loginParent,
@@ -17,9 +20,17 @@ import {
   enqueueCompletion,
   flushCompletionQueue,
   CompletionQueueItem,
+  removeQueuedCompletionsForMission,
 } from "@/lib/offline/queue";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { MissionWithState, Profile, SquadState } from "@/lib/types/domain";
+import {
+  MissionHistoryEntry,
+  MissionWithState,
+  Profile,
+  Reward,
+  SquadState,
+} from "@/lib/types/domain";
+import { getHeroLevel, getStreakBadge } from "@/lib/hero-levels";
 
 interface MissionBoardProps {
   profileId: string;
@@ -78,6 +89,9 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [missions, setMissions] = useState<MissionWithState[]>([]);
   const [squad, setSquad] = useState<SquadState | null>(null);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [history, setHistory] = useState<MissionHistoryEntry[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [effectText, setEffectText] = useState<string | null>(null);
@@ -98,19 +112,28 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
     return Math.round((completedCount / missions.length) * 100);
   }, [completedCount, missions.length]);
 
+  const heroLevel = useMemo(
+    () => (profile ? getHeroLevel(profile.powerLevel) : null),
+    [profile],
+  );
+
   const loadBoard = useCallback(async () => {
     try {
       setLoading(true);
-      const [profiles, missionRows, squadState] = await Promise.all([
+      const [profiles, missionRows, squadState, rewardRows, historyRows] = await Promise.all([
         fetchProfiles(),
         fetchMissions(profileId),
         fetchSquadState(),
+        fetchRewards(),
+        fetchMissionHistory(profileId, 7),
       ]);
 
       const activeProfile = profiles.find((item) => item.id === profileId) ?? null;
       setProfile(activeProfile);
       setMissions(missionRows);
       setSquad(squadState);
+      setRewards(rewardRows);
+      setHistory(historyRows);
       setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load board";
@@ -184,6 +207,20 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "mission_history" },
+        () => {
+          void loadBoard();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "missions" },
+        () => {
+          void loadBoard();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
         () => {
           void loadBoard();
         },
@@ -298,6 +335,12 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
         ),
       );
 
+      await removeQueuedCompletionsForMission(profileId, mission.id);
+
+      if (remoteEnabled && !navigator.onLine) {
+        return;
+      }
+
       try {
         const result = await uncompleteMission({
           missionId: mission.id,
@@ -320,7 +363,41 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
         await loadBoard();
       }
     },
-    [loadBoard, profile, profileId, squad],
+    [loadBoard, profile, profileId, squad, remoteEnabled],
+  );
+
+  const handleClaimReward = useCallback(
+    async (reward: Reward) => {
+      if (!profile) {
+        return;
+      }
+      if (profile.powerLevel < reward.pointCost) {
+        return;
+      }
+
+      const ok = window.confirm(
+        `Claim "${reward.title}" for ${reward.pointCost} power points?`,
+      );
+      if (!ok) {
+        return;
+      }
+
+      try {
+        const result = await claimReward({
+          profileId,
+          rewardId: reward.id,
+        });
+        setProfile((current) =>
+          current ? { ...current, powerLevel: result.newPowerLevel } : current,
+        );
+        setEffectText("REWARD UNLOCKED!");
+        window.setTimeout(() => setEffectText(null), 1000);
+        await loadBoard();
+      } catch {
+        await loadBoard();
+      }
+    },
+    [loadBoard, profile, profileId],
   );
 
   const startLongPress = useCallback(() => {
@@ -405,6 +482,15 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
               Mission Control
             </p>
             <h1 className="text-2xl font-black uppercase">{profile.heroName}</h1>
+            {heroLevel ? (
+              <p
+                className="text-xs font-black uppercase tracking-wide"
+                style={{ color: heroLevel.color }}
+              >
+                {heroLevel.name}
+                {heroLevel.nextPower ? ` · Next ${heroLevel.nextPower}` : " · Max"}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -417,6 +503,11 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
             <div className="meter-wrap">
               <div className="meter-fill" style={{ width: `${personalProgress}%` }} />
             </div>
+            {profile.currentStreak > 0 ? (
+              <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-[var(--hero-yellow)]">
+                {getStreakBadge(profile.currentStreak) ?? "🔥"} {profile.currentStreak} Day Streak
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -439,6 +530,19 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
           </div>
         </div>
       </header>
+
+      {squad.squadGoal ? (
+        <section className="mb-4 rounded-2xl border-4 border-black bg-[var(--hero-yellow)] p-4 text-black shadow-[6px_6px_0_#000]">
+          <p className="text-xs font-bold uppercase tracking-wide">Squad Goal</p>
+          <p className="text-2xl font-black uppercase">{squad.squadGoal.title}</p>
+          <p className="mt-1 text-sm font-bold">
+            {Math.max(0, squad.squadGoal.targetPower - squad.squadPowerCurrent)} more power needed.
+          </p>
+          <p className="text-xs font-bold uppercase">
+            Reward: {squad.squadGoal.rewardDescription}
+          </p>
+        </section>
+      ) : null}
 
       {profile.uiMode === "text" &&
       profile.powerLevel >= SECRET_HERO_CODE_THRESHOLD ? (
@@ -522,6 +626,82 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
             ) : null}
           </article>
         ))}
+      </section>
+
+      <section className="mt-4 rounded-2xl border-4 border-black bg-[var(--hero-blue)]/80 p-4 shadow-[6px_6px_0_#000]">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-lg font-black uppercase">Rewards</h2>
+          <p className="text-xs font-bold uppercase text-white/80">
+            Spend Power Points
+          </p>
+        </div>
+        {rewards.length === 0 ? (
+          <p className="text-sm font-bold text-white/80">No rewards available.</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {rewards.map((reward) => (
+              <article
+                key={reward.id}
+                className="rounded-xl border-2 border-black bg-white p-3 text-black"
+              >
+                <p className="text-lg font-black uppercase">{reward.title}</p>
+                <p className="mt-1 text-sm">{reward.description}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="rounded-full border-2 border-black bg-[var(--hero-yellow)] px-2 py-1 text-xs font-black uppercase">
+                    {reward.pointCost} Power
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleClaimReward(reward)}
+                    disabled={profile.powerLevel < reward.pointCost}
+                    className="rounded-lg border-2 border-black bg-[var(--hero-red)] px-3 py-1 text-xs font-black uppercase text-white disabled:opacity-50"
+                  >
+                    Claim
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-4 rounded-2xl border-4 border-black bg-black/45 p-4">
+        <button
+          type="button"
+          onClick={() => setShowHistory((current) => !current)}
+          className="w-full rounded-lg border-2 border-black bg-white px-3 py-2 text-sm font-black uppercase text-black"
+        >
+          {showHistory ? "Hide Mission Log" : "Show Mission Log"}
+        </button>
+        {showHistory ? (
+          <div className="mt-3 grid gap-3">
+            {history.length === 0 ? (
+              <p className="text-sm font-bold text-white/80">No mission history yet.</p>
+            ) : (
+              history.map((entry) => (
+                <article
+                  key={entry.date}
+                  className="rounded-xl border-2 border-black bg-white p-3 text-black"
+                >
+                  <p className="text-sm font-black uppercase">{entry.date}</p>
+                  <ul className="mt-2 grid gap-1">
+                    {entry.missions.map((item, index) => (
+                      <li
+                        key={`${entry.date}-${item.title}-${index}`}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span>{item.title}</span>
+                        <span className="font-black text-[var(--hero-blue)]">
+                          +{item.powerAwarded}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))
+            )}
+          </div>
+        ) : null}
       </section>
 
       {effectText ? (

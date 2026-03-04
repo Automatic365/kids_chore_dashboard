@@ -38,6 +38,25 @@ export async function removeQueuedCompletion(id: string): Promise<void> {
   await db.delete(STORE_NAME, id);
 }
 
+export async function removeQueuedCompletionsForMission(
+  profileId: string,
+  missionId: string,
+): Promise<void> {
+  const queued = await getQueuedCompletions();
+  if (queued.length === 0) {
+    return;
+  }
+
+  const db = await getDb();
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  for (const item of queued) {
+    if (item.profileId === profileId && item.missionId === missionId) {
+      await tx.store.delete(item.id);
+    }
+  }
+  await tx.done;
+}
+
 export async function flushCompletionQueue(
   sender: (item: CompletionQueueItem) => Promise<void>,
 ): Promise<void> {

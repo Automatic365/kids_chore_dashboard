@@ -43,14 +43,14 @@ export const updateMissionSchema = z
 
 export const createProfileSchema = z.object({
   heroName: z.string().min(2).max(60),
-  avatarUrl: z.string().min(1).max(2000),
+  avatarUrl: z.string().min(1).max(2_000_000),
   uiMode: z.enum(["text", "picture"]),
 });
 
 export const updateProfileSchema = z
   .object({
     heroName: z.string().min(2).max(60).optional(),
-    avatarUrl: z.string().min(1).max(2000).optional(),
+    avatarUrl: z.string().min(1).max(2_000_000).optional(),
     uiMode: z.enum(["text", "picture"]).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
@@ -72,4 +72,43 @@ export const aiMissionGenerateSchema = z.object({
   uiMode: z.enum(["text", "picture"]).optional(),
   provider: z.enum(["openai", "gemini"]).optional(),
   parentPin: z.string().regex(/^\d{4,8}$/).optional(),
+});
+
+export const createRewardSchema = z.object({
+  title: z.string().min(2).max(120),
+  description: z.string().min(1).max(500),
+  pointCost: z.number().int().min(1).max(1000),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().min(1).max(999).optional(),
+});
+
+export const updateRewardSchema = z
+  .object({
+    title: z.string().min(2).max(120).optional(),
+    description: z.string().min(1).max(500).optional(),
+    pointCost: z.number().int().min(1).max(1000).optional(),
+    isActive: z.boolean().optional(),
+    sortOrder: z.number().int().min(1).max(999).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  });
+
+export const claimRewardSchema = z.object({
+  profileId: z.string().min(1),
+  rewardId: z.string().min(1),
+});
+
+export const setSquadGoalSchema = z.object({
+  goal: z
+    .object({
+      title: z.string().min(2).max(120),
+      targetPower: z.number().int().min(1).max(2000),
+      rewardDescription: z.string().min(1).max(500),
+    })
+    .nullable(),
+});
+
+export const generateAvatarSchema = z.object({
+  heroName: z.string().min(2).max(60),
 });

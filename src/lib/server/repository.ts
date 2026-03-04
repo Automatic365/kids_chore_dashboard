@@ -5,19 +5,26 @@ import { hashPin, verifyPin } from "@/lib/server/pin";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   AwardSquadPowerInput,
+  ClaimRewardInput,
+  ClaimRewardResult,
   CompletionResult,
   CreateMissionInput,
   CreateProfileInput,
+  CreateRewardInput,
   Mission,
+  MissionHistoryEntry,
   MissionCompletionRequest,
   MissionUncompletionRequest,
   MissionWithState,
   ParentDashboardData,
   Profile,
+  Reward,
+  SquadGoal,
   SquadState,
   UncompletionResult,
   UpdateMissionInput,
   UpdateProfileInput,
+  UpdateRewardInput,
 } from "@/lib/types/domain";
 
 export interface Repository {
@@ -32,6 +39,13 @@ export interface Repository {
   deleteMission(id: string): Promise<void>;
   restoreMission(id: string): Promise<Mission>;
   awardSquadPower(input: AwardSquadPowerInput): Promise<SquadState>;
+  getRewards(): Promise<Reward[]>;
+  createReward(input: CreateRewardInput): Promise<Reward>;
+  updateReward(id: string, input: UpdateRewardInput): Promise<Reward>;
+  deleteReward(id: string): Promise<void>;
+  claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult>;
+  setSquadGoal(goal: SquadGoal | null): Promise<SquadState>;
+  getMissionHistory(profileId: string, days: number): Promise<MissionHistoryEntry[]>;
   verifyParentPin(pin: string): Promise<boolean>;
   changeParentPin(newPin: string): Promise<void>;
   getParentDashboard(): Promise<ParentDashboardData>;
@@ -47,6 +61,8 @@ function mapProfile(row: {
   avatar_url: string;
   ui_mode: "text" | "picture";
   power_level: number;
+  current_streak?: number | null;
+  last_streak_date?: string | null;
 }): Profile {
   return {
     id: row.id,
@@ -54,6 +70,8 @@ function mapProfile(row: {
     avatarUrl: row.avatar_url,
     uiMode: row.ui_mode,
     powerLevel: row.power_level,
+    currentStreak: Number(row.current_streak ?? 0),
+    lastStreakDate: row.last_streak_date ?? null,
   };
 }
 
@@ -89,6 +107,8 @@ type ProfileRow = {
   avatar_url: string;
   ui_mode: "text" | "picture";
   power_level: number;
+  current_streak?: number | null;
+  last_streak_date?: string | null;
 };
 
 type MissionRow = {
@@ -155,6 +175,34 @@ class LocalRepository implements Repository {
 
   async awardSquadPower(input: AwardSquadPowerInput): Promise<SquadState> {
     return this.store.awardSquadPower(input);
+  }
+
+  async getRewards(): Promise<Reward[]> {
+    return this.store.getRewards();
+  }
+
+  async createReward(input: CreateRewardInput): Promise<Reward> {
+    return this.store.createReward(input);
+  }
+
+  async updateReward(id: string, input: UpdateRewardInput): Promise<Reward> {
+    return this.store.updateReward(id, input);
+  }
+
+  async deleteReward(id: string): Promise<void> {
+    this.store.deleteReward(id);
+  }
+
+  async claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult> {
+    return this.store.claimReward(input);
+  }
+
+  async setSquadGoal(goal: SquadGoal | null): Promise<SquadState> {
+    return this.store.setSquadGoal(goal);
+  }
+
+  async getMissionHistory(profileId: string, days: number): Promise<MissionHistoryEntry[]> {
+    return this.store.getMissionHistory(profileId, days);
   }
 
   async verifyParentPin(pin: string): Promise<boolean> {
@@ -233,6 +281,7 @@ class SupabaseRepository implements Repository {
         squadPowerCurrent: insertedRow.squad_power_current,
         squadPowerMax: insertedRow.squad_power_max,
         cycleDate: insertedRow.cycle_date,
+        squadGoal: null,
       };
     }
     const squadRow = data as SquadRow;
@@ -241,7 +290,94 @@ class SupabaseRepository implements Repository {
       squadPowerCurrent: squadRow.squad_power_current,
       squadPowerMax: squadRow.squad_power_max,
       cycleDate: squadRow.cycle_date,
+      squadGoal: null,
     };
+  }
+
+  async getRewards(): Promise<Reward[]> {
+    throw new Error("Not implemented — requires Supabase migration");
+  }
+
+  async createReward(input: CreateRewardInput): Promise<Reward> {
+    void input;
+    throw new Error("Not implemented — requires Supabase migration");
+  }
+
+  async updateReward(id: string, input: UpdateRewardInput): Promise<Reward> {
+    void id;
+    void input;
+    throw new Error("Not implemented — requires Supabase migration");
+  }
+
+  async deleteReward(id: string): Promise<void> {
+    void id;
+    throw new Error("Not implemented — requires Supabase migration");
+  }
+
+  async claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult> {
+    void input;
+    throw new Error("Not implemented — requires Supabase migration");
+  }
+
+  async setSquadGoal(goal: SquadGoal | null): Promise<SquadState> {
+    void goal;
+    throw new Error("Not implemented — requires Supabase migration");
+  }
+
+  async getMissionHistory(
+    profileId: string,
+    days: number,
+  ): Promise<MissionHistoryEntry[]> {
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const squad = await this.getSquadState();
+    const start = new Date(`${squad.cycleDate}T00:00:00.000Z`);
+    start.setUTCDate(start.getUTCDate() - Math.max(0, days - 1));
+    const minDate = start.toISOString().slice(0, 10);
+
+    const { data, error } = await admin
+      .from("mission_history")
+      .select("completed_on_local_date, points_awarded, mission_id")
+      .eq("profile_id", profileId)
+      .gte("completed_on_local_date", minDate)
+      .order("completed_on_local_date", { ascending: false });
+    if (error) throw new Error(error.message);
+
+    const rows = (data ??
+      []) as Array<{
+      completed_on_local_date: string;
+      points_awarded: number;
+      mission_id: string;
+    }>;
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const missionIds = Array.from(new Set(rows.map((row) => row.mission_id)));
+    const { data: missionRows, error: missionError } = await admin
+      .from("missions")
+      .select("id, title")
+      .in("id", missionIds);
+    if (missionError) throw new Error(missionError.message);
+    const titleById = new Map(
+      ((missionRows ?? []) as Array<{ id: string; title: string }>).map((row) => [
+        row.id,
+        row.title,
+      ]),
+    );
+
+    const grouped = new Map<string, Array<{ title: string; powerAwarded: number }>>();
+    for (const row of rows) {
+      const list = grouped.get(row.completed_on_local_date) ?? [];
+      list.push({
+        title: titleById.get(row.mission_id) ?? "Mission",
+        powerAwarded: row.points_awarded,
+      });
+      grouped.set(row.completed_on_local_date, list);
+    }
+
+    return Array.from(grouped.entries()).map(([date, missions]) => ({ date, missions }));
   }
 
   async getMissions(profileId?: string): Promise<MissionWithState[]> {
@@ -514,6 +650,7 @@ class SupabaseRepository implements Repository {
       squadPowerCurrent: squadRow.squad_power_current,
       squadPowerMax: squadRow.squad_power_max,
       cycleDate: squadRow.cycle_date,
+      squadGoal: null,
     };
   }
 
@@ -543,7 +680,7 @@ class SupabaseRepository implements Repository {
       this.getSquadState(),
     ]);
 
-    return { profiles, missions, trashedMissions, squad };
+    return { profiles, missions, trashedMissions, squad, rewards: [] };
   }
 
   async changeParentPin(newPin: string): Promise<void> {
@@ -614,16 +751,6 @@ class SupabaseRepository implements Repository {
   async deleteProfile(id: string): Promise<void> {
     const admin = getSupabaseAdmin();
     if (!admin) throw new Error("Supabase is not configured");
-
-    // soft-delete all missions for this profile
-    const now = new Date().toISOString();
-    const { error: missionError } = await admin
-      .from("missions")
-      .update({ deleted_at: now, is_active: false })
-      .eq("profile_id", id)
-      .is("deleted_at", null);
-
-    if (missionError) throw new Error(missionError.message);
 
     const { error } = await admin.from("profiles").delete().eq("id", id);
     if (error) throw new Error(error.message);

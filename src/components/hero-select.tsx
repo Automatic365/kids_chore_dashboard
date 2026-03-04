@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { fetchProfiles } from "@/lib/client-api";
+import { AvatarDisplay } from "@/components/avatar-display";
+import { getHeroLevel, getStreakBadge } from "@/lib/hero-levels";
 import { Profile } from "@/lib/types/domain";
 
 export function HeroSelect() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,20 +51,51 @@ export function HeroSelect() {
           <Link
             key={profile.id}
             href={`/hero/${profile.id}`}
-            className="comic-card comic-card-interactive group flex min-h-[280px] flex-col overflow-hidden"
+            className="comic-card comic-card-interactive group relative flex min-h-[280px] flex-col overflow-hidden"
           >
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const url = `${window.location.origin}/hero/${profile.id}`;
+                void navigator.clipboard.writeText(url).then(() => {
+                  setCopiedId(profile.id);
+                  window.setTimeout(() => setCopiedId((current) => (current === profile.id ? null : current)), 2000);
+                });
+              }}
+              className="absolute top-2 right-2 z-10 rounded-lg border-2 border-black bg-white/95 px-2 py-1 text-xs font-black uppercase text-black"
+            >
+              Share
+            </button>
+            {copiedId === profile.id ? (
+              <span className="absolute top-12 right-2 z-10 rounded-lg border-2 border-black bg-[var(--hero-yellow)] px-2 py-1 text-[10px] font-black uppercase text-black">
+                Copied!
+              </span>
+            ) : null}
             <div className="relative h-48 w-full overflow-hidden bg-[var(--hero-blue)]/30 md:h-64">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={profile.avatarUrl}
+              <AvatarDisplay
+                avatarUrl={profile.avatarUrl}
                 alt={profile.heroName}
-                className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                className="grid h-full w-full place-items-center object-cover text-7xl transition duration-300 group-hover:scale-105"
+                textClassName="drop-shadow-[0_3px_0_#000]"
               />
             </div>
             <div className="flex flex-1 flex-col justify-center gap-2 p-4 text-center md:p-5">
               <h2 className="text-3xl font-black uppercase text-white sm:text-4xl">
                 {profile.heroName}
               </h2>
+              <p
+                className="text-sm font-black uppercase"
+                style={{ color: getHeroLevel(profile.powerLevel).color }}
+              >
+                Level: {getHeroLevel(profile.powerLevel).name}
+              </p>
+              {profile.currentStreak > 0 ? (
+                <p className="text-xs font-bold uppercase text-[var(--hero-yellow)]">
+                  {getStreakBadge(profile.currentStreak) ?? "🔥"} {profile.currentStreak} Day Streak
+                </p>
+              ) : null}
               <p className="text-base font-semibold uppercase tracking-wide text-white/80">
                 {profile.uiMode === "text" ? "Team Captain Mode" : "Super-Tot Mode"}
               </p>

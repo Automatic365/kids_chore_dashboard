@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 
-import { awardSquadPower as awardSquadPowerRequest } from "@/lib/client-api";
+import {
+  awardSquadPower as awardSquadPowerRequest,
+  setSquadGoal as setSquadGoalRequest,
+} from "@/lib/client-api";
 import { SquadState } from "@/lib/types/domain";
 
 interface SquadControlSectionProps {
@@ -21,6 +24,9 @@ export function SquadControlSection({
   cycleDate,
 }: SquadControlSectionProps) {
   const [awardDelta, setAwardDelta] = useState(5);
+  const [goalTitle, setGoalTitle] = useState<string | null>(null);
+  const [goalTargetPower, setGoalTargetPower] = useState<number | null>(null);
+  const [goalRewardDescription, setGoalRewardDescription] = useState<string | null>(null);
 
   async function handleAward() {
     try {
@@ -29,6 +35,48 @@ export function SquadControlSection({
       await onRefresh();
     } catch {
       pushToast("error", "Failed to award squad power.");
+    }
+  }
+
+  async function handleSetGoal() {
+    const resolvedTitle = (goalTitle ?? squad.squadGoal?.title ?? "").trim();
+    const resolvedRewardDescription = (
+      goalRewardDescription ?? squad.squadGoal?.rewardDescription ?? ""
+    ).trim();
+    const resolvedTargetPower =
+      goalTargetPower ?? squad.squadGoal?.targetPower ?? squad.squadPowerMax;
+
+    if (!resolvedTitle || !resolvedRewardDescription) {
+      pushToast("error", "Goal title and reward are required.");
+      return;
+    }
+
+    try {
+      await setSquadGoalRequest({
+        title: resolvedTitle,
+        targetPower: Math.max(1, resolvedTargetPower),
+        rewardDescription: resolvedRewardDescription,
+      });
+      pushToast("success", "Squad goal updated.");
+      setGoalTitle(null);
+      setGoalTargetPower(null);
+      setGoalRewardDescription(null);
+      await onRefresh();
+    } catch {
+      pushToast("error", "Failed to set squad goal.");
+    }
+  }
+
+  async function handleClearGoal() {
+    try {
+      await setSquadGoalRequest(null);
+      pushToast("success", "Squad goal cleared.");
+      setGoalTitle(null);
+      setGoalTargetPower(null);
+      setGoalRewardDescription(null);
+      await onRefresh();
+    } catch {
+      pushToast("error", "Failed to clear squad goal.");
     }
   }
 
@@ -75,6 +123,57 @@ export function SquadControlSection({
           >
             Award Squad Power
           </button>
+        </div>
+
+        <div className="mt-4 grid gap-2 rounded-xl border-2 border-black bg-white p-3 text-black">
+          <p className="text-sm font-black uppercase">Squad Goal</p>
+          {squad.squadGoal ? (
+            <p className="text-xs font-bold uppercase text-zinc-600">
+              Current: {squad.squadGoal.title} ({squad.squadGoal.targetPower}) -{" "}
+              {squad.squadGoal.rewardDescription}
+            </p>
+          ) : (
+            <p className="text-xs font-bold uppercase text-zinc-600">No goal set</p>
+          )}
+          <input
+            value={goalTitle ?? squad.squadGoal?.title ?? ""}
+            onChange={(event) => setGoalTitle(event.target.value)}
+            placeholder="Goal title"
+            className="rounded-lg border-2 border-black px-3 py-2"
+            maxLength={120}
+          />
+          <input
+            type="number"
+            value={goalTargetPower ?? squad.squadGoal?.targetPower ?? squad.squadPowerMax}
+            onChange={(event) => setGoalTargetPower(Number(event.target.value) || 1)}
+            min={1}
+            max={2000}
+            className="w-40 rounded-lg border-2 border-black px-3 py-2"
+          />
+          <textarea
+            value={goalRewardDescription ?? squad.squadGoal?.rewardDescription ?? ""}
+            onChange={(event) => setGoalRewardDescription(event.target.value)}
+            placeholder="Reward description"
+            className="rounded-lg border-2 border-black px-3 py-2 text-sm"
+            rows={2}
+            maxLength={500}
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSetGoal()}
+              className="rounded-xl border-2 border-black bg-[var(--hero-yellow)] px-4 py-2 text-sm font-black uppercase text-black"
+            >
+              Set Goal
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleClearGoal()}
+              className="rounded-xl border-2 border-black bg-zinc-100 px-4 py-2 text-sm font-black uppercase text-black"
+            >
+              Clear Goal
+            </button>
+          </div>
         </div>
       </div>
     </header>

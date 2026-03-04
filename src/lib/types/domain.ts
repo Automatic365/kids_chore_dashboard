@@ -7,6 +7,8 @@ export interface Profile {
   avatarUrl: string;
   uiMode: UiMode;
   powerLevel: number;
+  currentStreak: number;
+  lastStreakDate: string | null;
 }
 
 export interface Mission {
@@ -30,6 +32,13 @@ export interface SquadState {
   squadPowerCurrent: number;
   squadPowerMax: number;
   cycleDate: string;
+  squadGoal: SquadGoal | null;
+}
+
+export interface SquadGoal {
+  title: string;
+  targetPower: number;
+  rewardDescription: string;
 }
 
 export interface MissionCompletionRequest {
@@ -86,6 +95,59 @@ export interface AwardSquadPowerInput {
   note?: string;
 }
 
+export interface Reward {
+  id: string;
+  title: string;
+  description: string;
+  pointCost: number;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface RewardClaimRow {
+  id: string;
+  profileId: string;
+  rewardId: string;
+  pointCost: number;
+  claimedAt: string;
+}
+
+export interface CreateRewardInput {
+  title: string;
+  description: string;
+  pointCost: number;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+export interface UpdateRewardInput {
+  title?: string;
+  description?: string;
+  pointCost?: number;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+export interface ClaimRewardInput {
+  profileId: string;
+  rewardId: string;
+}
+
+export interface ClaimRewardResult {
+  claimed: boolean;
+  insufficientPoints: boolean;
+  newPowerLevel: number;
+  reward: Reward;
+}
+
+export interface MissionHistoryEntry {
+  date: string;
+  missions: Array<{
+    title: string;
+    powerAwarded: number;
+  }>;
+}
+
 export interface CreateProfileInput {
   heroName: string;
   avatarUrl: string;
@@ -103,4 +165,5 @@ export interface ParentDashboardData {
   missions: MissionWithState[];
   trashedMissions: MissionWithState[];
   squad: SquadState;
+  rewards: Reward[];
 }

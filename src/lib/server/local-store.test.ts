@@ -89,4 +89,77 @@ describe("local store completion rules", () => {
     const missionIds = store.getMissions().map((mission) => mission.id);
     expect(missionIds).toContain("m1");
   });
+
+  it("increments streak only on first completion per day", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    store.resetDaily("2099-01-01");
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-streak-1",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+      clientRequestId: "req-streak-2",
+      clientCompletedAt: new Date().toISOString(),
+    });
+
+    let profile = store.getProfiles().find((item) => item.id === "captain-alpha");
+    expect(profile?.currentStreak).toBe(1);
+
+    store.resetDaily("2099-01-02");
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-streak-3",
+      clientCompletedAt: new Date().toISOString(),
+    });
+
+    profile = store.getProfiles().find((item) => item.id === "captain-alpha");
+    expect(profile?.currentStreak).toBe(2);
+    expect(profile?.lastStreakDate).toBe("2099-01-02");
+  });
+
+  it("claims rewards only when profile has enough power", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    const fail = store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r1",
+    });
+    expect(fail.claimed).toBe(false);
+    expect(fail.insufficientPoints).toBe(true);
+
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-reward-1",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+      clientRequestId: "req-reward-2",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m3",
+      profileId: "captain-alpha",
+      clientRequestId: "req-reward-3",
+      clientCompletedAt: new Date().toISOString(),
+    });
+
+    const success = store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r1",
+    });
+    expect(success.claimed).toBe(true);
+    expect(success.insufficientPoints).toBe(false);
+    expect(success.newPowerLevel).toBeGreaterThanOrEqual(0);
+  });
 });

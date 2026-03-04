@@ -7,9 +7,13 @@ import { ParentDashboardData } from "@/lib/types/domain";
 
 import { AddMissionSection } from "@/components/parent/add-mission-section";
 import { AiGeneratorSection } from "@/components/parent/ai-generator-section";
+import { BonusMissionSection } from "@/components/parent/bonus-mission-section";
+import { CycleSummarySection } from "@/components/parent/cycle-summary-section";
 import { ManageMissionsSection } from "@/components/parent/manage-missions-section";
+import { MissionTemplatesSection } from "@/components/parent/mission-templates-section";
 import { PinChangeSection } from "@/components/parent/pin-change-section";
 import { ProfileManagerSection } from "@/components/parent/profile-manager-section";
+import { RewardManagerSection } from "@/components/parent/reward-manager-section";
 import { SquadControlSection } from "@/components/parent/squad-control-section";
 import { TrashSection } from "@/components/parent/trash-section";
 
@@ -112,7 +116,7 @@ export function ParentDashboard() {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-2 py-4 sm:px-4">
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-2 py-4 sm:px-4">
       {toasts.length > 0 ? (
         <div className="pointer-events-none fixed top-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2">
           {toasts.map((toast) => (
@@ -156,6 +160,24 @@ export function ParentDashboard() {
         pushToast={pushToast}
       />
 
+      <MissionTemplatesSection
+        profiles={dashboard.profiles}
+        onRefresh={refresh}
+        pushToast={pushToast}
+      />
+
+      <BonusMissionSection
+        profiles={dashboard.profiles}
+        onRefresh={refresh}
+        pushToast={pushToast}
+      />
+
+      <RewardManagerSection
+        rewards={dashboard.rewards}
+        onRefresh={refresh}
+        pushToast={pushToast}
+      />
+
       <ManageMissionsSection
         missions={dashboard.missions}
         onRefresh={refresh}
@@ -169,6 +191,8 @@ export function ParentDashboard() {
       />
 
       <PinChangeSection pushToast={pushToast} />
-    </section>
+
+      <CycleSummarySection pushToast={pushToast} />
+    </main>
   );
 }
