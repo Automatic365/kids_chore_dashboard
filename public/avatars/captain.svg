@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="g1" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#2c66ff"/>
+      <stop offset="100%" stop-color="#11234f"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#g1)"/>
+  <circle cx="400" cy="220" r="120" fill="#ffe3c2"/>
+  <rect x="260" y="330" width="280" height="190" rx="30" fill="#f03b44"/>
+  <path d="M255 330h290l-145 170z" fill="#ffe45b"/>
+  <text x="400" y="560" font-family="Impact, sans-serif" font-size="56" text-anchor="middle" fill="#fff">CAPTAIN</text>
+</svg>

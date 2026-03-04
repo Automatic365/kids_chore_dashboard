@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#0c1d43"/>
+  <rect x="140" y="300" width="220" height="180" rx="20" fill="#f03b44"/>
+  <rect x="370" y="250" width="280" height="230" rx="24" fill="#ffe45b"/>
+  <circle cx="210" cy="300" r="20" fill="#fff"/>
+  <circle cx="290" cy="300" r="20" fill="#fff"/>
+  <circle cx="430" cy="250" r="20" fill="#fff"/>
+  <circle cx="510" cy="250" r="20" fill="#fff"/>
+  <circle cx="590" cy="250" r="20" fill="#fff"/>
+  <text x="400" y="545" text-anchor="middle" font-family="Impact, sans-serif" font-size="72" fill="#fff">LEGOS</text>
+</svg>

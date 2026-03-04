@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#102245"/>
+  <rect x="120" y="320" width="560" height="130" rx="20" fill="#ffe45b"/>
+  <rect x="120" y="250" width="220" height="80" rx="18" fill="#fff"/>
+  <rect x="340" y="250" width="260" height="80" rx="18" fill="#f7f7f7"/>
+  <text x="400" y="530" text-anchor="middle" font-family="Impact, sans-serif" font-size="72" fill="#fff">BED</text>
+</svg>

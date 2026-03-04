@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="HeroHabits">
+  <rect width="192" height="192" rx="28" fill="#0059ff"/>
+  <path d="M25 66h142v60H25z" fill="#ffe45b"/>
+  <path d="M48 40h96l-10 25H58z" fill="#f03b44"/>
+  <path d="M58 146h76l-12 12H70z" fill="#f03b44"/>
+  <text x="96" y="108" text-anchor="middle" font-size="42" font-family="Impact, sans-serif" fill="#101938">HH</text>
+</svg>

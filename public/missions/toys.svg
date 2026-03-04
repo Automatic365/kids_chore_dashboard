@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#152a54"/>
+  <rect x="190" y="220" width="420" height="280" rx="32" fill="#f03b44"/>
+  <circle cx="310" cy="300" r="38" fill="#ffe45b"/>
+  <rect x="380" y="270" width="180" height="70" rx="20" fill="#0059ff"/>
+  <polygon points="300,410 370,360 440,410 370,460" fill="#ffe45b"/>
+  <text x="400" y="545" text-anchor="middle" font-family="Impact, sans-serif" font-size="72" fill="#fff">TOYS</text>
+</svg>
