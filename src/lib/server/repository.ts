@@ -7,6 +7,7 @@ import {
   AwardSquadPowerInput,
   CompletionResult,
   CreateMissionInput,
+  CreateProfileInput,
   Mission,
   MissionCompletionRequest,
   MissionUncompletionRequest,
@@ -16,6 +17,7 @@ import {
   SquadState,
   UncompletionResult,
   UpdateMissionInput,
+  UpdateProfileInput,
 } from "@/lib/types/domain";
 
 export interface Repository {
@@ -31,8 +33,12 @@ export interface Repository {
   restoreMission(id: string): Promise<Mission>;
   awardSquadPower(input: AwardSquadPowerInput): Promise<SquadState>;
   verifyParentPin(pin: string): Promise<boolean>;
+  changeParentPin(newPin: string): Promise<void>;
   getParentDashboard(): Promise<ParentDashboardData>;
   resetDaily(cycleDate?: string): Promise<SquadState>;
+  createProfile(input: CreateProfileInput): Promise<Profile>;
+  updateProfile(id: string, input: UpdateProfileInput): Promise<Profile>;
+  deleteProfile(id: string): Promise<void>;
 }
 
 function mapProfile(row: {
@@ -159,8 +165,24 @@ class LocalRepository implements Repository {
     return this.store.getParentDashboard();
   }
 
+  async changeParentPin(newPin: string): Promise<void> {
+    this.store.changeParentPin(newPin);
+  }
+
   async resetDaily(cycleDate?: string): Promise<SquadState> {
     return this.store.resetDaily(cycleDate);
+  }
+
+  async createProfile(input: CreateProfileInput): Promise<Profile> {
+    return this.store.createProfile(input);
+  }
+
+  async updateProfile(id: string, input: UpdateProfileInput): Promise<Profile> {
+    return this.store.updateProfile(id, input);
+  }
+
+  async deleteProfile(id: string): Promise<void> {
+    this.store.deleteProfile(id);
   }
 }
 
@@ -524,6 +546,19 @@ class SupabaseRepository implements Repository {
     return { profiles, missions, trashedMissions, squad };
   }
 
+  async changeParentPin(newPin: string): Promise<void> {
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const pinHash = hashPin(newPin);
+
+    const { error } = await admin
+      .from("parent_settings")
+      .upsert({ id: 1, pin_hash: pinHash });
+
+    if (error) throw new Error(error.message);
+  }
+
   async resetDaily(cycleDate = toLocalDateString(new Date(), env.appTimeZone)): Promise<SquadState> {
     const admin = getSupabaseAdmin();
     if (!admin) throw new Error("Supabase is not configured");
@@ -535,6 +570,63 @@ class SupabaseRepository implements Repository {
     if (error) throw new Error(error.message);
 
     return this.getSquadState();
+  }
+
+  async createProfile(input: CreateProfileInput): Promise<Profile> {
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { data, error } = await admin
+      .from("profiles")
+      .insert({
+        hero_name: input.heroName,
+        avatar_url: input.avatarUrl,
+        ui_mode: input.uiMode,
+        power_level: 0,
+      })
+      .select("id, hero_name, avatar_url, ui_mode, power_level")
+      .single();
+
+    if (error) throw new Error(error.message);
+    return mapProfile(data as ProfileRow);
+  }
+
+  async updateProfile(id: string, input: UpdateProfileInput): Promise<Profile> {
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const payload: Record<string, string> = {};
+    if (input.heroName !== undefined) payload.hero_name = input.heroName;
+    if (input.avatarUrl !== undefined) payload.avatar_url = input.avatarUrl;
+    if (input.uiMode !== undefined) payload.ui_mode = input.uiMode;
+
+    const { data, error } = await admin
+      .from("profiles")
+      .update(payload)
+      .eq("id", id)
+      .select("id, hero_name, avatar_url, ui_mode, power_level")
+      .single();
+
+    if (error) throw new Error(error.message);
+    return mapProfile(data as ProfileRow);
+  }
+
+  async deleteProfile(id: string): Promise<void> {
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    // soft-delete all missions for this profile
+    const now = new Date().toISOString();
+    const { error: missionError } = await admin
+      .from("missions")
+      .update({ deleted_at: now, is_active: false })
+      .eq("profile_id", id)
+      .is("deleted_at", null);
+
+    if (missionError) throw new Error(missionError.message);
+
+    const { error } = await admin.from("profiles").delete().eq("id", id);
+    if (error) throw new Error(error.message);
   }
 }
 

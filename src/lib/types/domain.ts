@@ -86,6 +86,18 @@ export interface AwardSquadPowerInput {
   note?: string;
 }
 
+export interface CreateProfileInput {
+  heroName: string;
+  avatarUrl: string;
+  uiMode: UiMode;
+}
+
+export interface UpdateProfileInput {
+  heroName?: string;
+  avatarUrl?: string;
+  uiMode?: UiMode;
+}
+
 export interface ParentDashboardData {
   profiles: Profile[];
   missions: MissionWithState[];

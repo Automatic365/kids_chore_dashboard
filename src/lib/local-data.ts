@@ -9,6 +9,7 @@ import {
   AwardSquadPowerInput,
   CompletionResult,
   CreateMissionInput,
+  CreateProfileInput,
   Mission,
   MissionCompletionRequest,
   MissionUncompletionRequest,
@@ -18,6 +19,7 @@ import {
   SquadState,
   UncompletionResult,
   UpdateMissionInput,
+  UpdateProfileInput,
 } from "@/lib/types/domain";
 
 interface MissionHistoryLocal {
@@ -725,4 +727,77 @@ export async function localResetDaily(cycleDate: string): Promise<SquadState> {
   const next = { ...squad, cycleDate };
   await setMetaValue(db, "squad", next);
   return next;
+}
+
+export async function localCreateProfile(input: CreateProfileInput): Promise<Profile> {
+  assertParentSession();
+
+  const db = await getDb();
+  const profile: Profile = {
+    id: randomId(),
+    heroName: input.heroName,
+    avatarUrl: input.avatarUrl,
+    uiMode: input.uiMode,
+    powerLevel: 0,
+  };
+  await db.put("profiles", profile);
+  return profile;
+}
+
+export async function localUpdateProfile(
+  id: string,
+  input: UpdateProfileInput,
+): Promise<Profile> {
+  assertParentSession();
+
+  const db = await getDb();
+  const profile = (await db.get("profiles", id)) as Profile | undefined;
+  if (!profile) throw new Error("Profile not found");
+
+  const next: Profile = {
+    ...profile,
+    ...(input.heroName !== undefined ? { heroName: input.heroName } : {}),
+    ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}),
+    ...(input.uiMode !== undefined ? { uiMode: input.uiMode } : {}),
+  };
+
+  await db.put("profiles", next);
+  return next;
+}
+
+export async function localDeleteProfile(id: string): Promise<void> {
+  assertParentSession();
+
+  const db = await getDb();
+  const tx = db.transaction(["profiles", "missions"], "readwrite");
+
+  const profile = await tx.objectStore("profiles").get(id);
+  if (!profile) {
+    await tx.done;
+    throw new Error("Profile not found");
+  }
+
+  // soft-delete all missions for this profile
+  const allMissions = (await tx.objectStore("missions").getAll()) as StoredMission[];
+  const now = new Date().toISOString();
+  for (const m of allMissions) {
+    if (m.profileId === id && !m.deletedAt) {
+      await tx.objectStore("missions").put({ ...normalizeMission(m), isActive: false, deletedAt: now });
+    }
+  }
+
+  await tx.objectStore("profiles").delete(id);
+  await tx.done;
+}
+
+export async function localChangeParentPin(newPin: string): Promise<void> {
+  assertParentSession();
+
+  const db = await getDb();
+  const pinHash = await hashPin(newPin);
+  const settings: ParentSettingsLocal = {
+    pinHash,
+    updatedAt: new Date().toISOString(),
+  };
+  await setMetaValue(db, "parent_settings", settings);
 }

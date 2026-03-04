@@ -1,8 +1,11 @@
 import {
   localAwardSquadPower,
+  localChangeParentPin,
   localCompleteMission,
   localCreateMission,
+  localCreateProfile,
   localDeleteMission,
+  localDeleteProfile,
   localGetMissions,
   localGetParentDashboard,
   localGetProfiles,
@@ -12,12 +15,14 @@ import {
   localRestoreMission,
   localUncompleteMission,
   localUpdateMission,
+  localUpdateProfile,
 } from "@/lib/local-data";
 import { publicEnv } from "@/lib/public-env";
 import {
   AwardSquadPowerInput,
   CompletionResult,
   CreateMissionInput,
+  CreateProfileInput,
   Mission,
   MissionUncompletionRequest,
   MissionWithState,
@@ -26,6 +31,7 @@ import {
   SquadState,
   UncompletionResult,
   UpdateMissionInput,
+  UpdateProfileInput,
 } from "@/lib/types/domain";
 
 export function isRemoteApiEnabled(): boolean {
@@ -246,5 +252,66 @@ export async function awardSquadPower(
       return data.squad;
     },
     () => localAwardSquadPower(input),
+  );
+}
+
+export async function createProfile(input: CreateProfileInput): Promise<Profile> {
+  return withFallback(
+    async () => {
+      const response = await fetch("/api/parent/profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) throw new Error("Profile creation failed");
+      const data = (await response.json()) as { profile: Profile };
+      return data.profile;
+    },
+    () => localCreateProfile(input),
+  );
+}
+
+export async function updateProfile(
+  id: string,
+  input: UpdateProfileInput,
+): Promise<Profile> {
+  return withFallback(
+    async () => {
+      const response = await fetch(`/api/parent/profiles/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) throw new Error("Profile update failed");
+      const data = (await response.json()) as { profile: Profile };
+      return data.profile;
+    },
+    () => localUpdateProfile(id, input),
+  );
+}
+
+export async function deleteProfile(id: string): Promise<void> {
+  return withFallback(
+    async () => {
+      const response = await fetch(`/api/parent/profiles/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("Profile delete failed");
+    },
+    () => localDeleteProfile(id),
+  );
+}
+
+export async function changeParentPin(newPin: string): Promise<void> {
+  return withFallback(
+    async () => {
+      const response = await fetch("/api/parent/auth/change-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPin }),
+      });
+      if (!response.ok) throw new Error("PIN change failed");
+    },
+    () => localChangeParentPin(newPin),
   );
 }

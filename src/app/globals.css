@@ -102,10 +102,49 @@ h3,
   }
 }
 
+.squad-win-star {
+  position: absolute;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  animation: star-fly var(--duration, 1.8s) ease-out var(--delay, 0s) both;
+}
+
+@keyframes star-fly {
+  0% {
+    transform: translate(0, 0) scale(0);
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--tx, 0px), var(--ty, -200px)) scale(1.5);
+    opacity: 0;
+  }
+}
+
+.squad-win-text {
+  animation: win-slam 0.45s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+
+@keyframes win-slam {
+  0% {
+    transform: scale(0.2) rotate(-8deg);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .comic-card-interactive,
   .meter-fill,
-  .effect-pop {
+  .effect-pop,
+  .squad-win-star,
+  .squad-win-text {
     transition: none;
     animation: none;
   }

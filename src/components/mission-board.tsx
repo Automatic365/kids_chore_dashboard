@@ -28,6 +28,29 @@ interface MissionBoardProps {
 const SECRET_HERO_CODE_THRESHOLD = 60;
 const SECRET_HERO_CODE_VALUE = "COMET-77";
 
+const STAR_COLORS = [
+  "var(--hero-yellow)",
+  "var(--hero-red)",
+  "#fff",
+  "var(--hero-blue)",
+  "#ff9f43",
+];
+
+const STARS = Array.from({ length: 28 }, (_, i) => {
+  const angle = (i / 28) * 360;
+  const dist = 120 + Math.random() * 160;
+  const tx = Math.cos((angle * Math.PI) / 180) * dist;
+  const ty = Math.sin((angle * Math.PI) / 180) * dist - 60;
+  return {
+    key: i,
+    color: STAR_COLORS[i % STAR_COLORS.length],
+    tx,
+    ty,
+    delay: (i * 0.04).toFixed(2),
+    duration: (1.4 + Math.random() * 0.8).toFixed(2),
+  };
+});
+
 function makeId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -62,6 +85,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [isPressingParentSpot, setIsPressingParentSpot] = useState(false);
+  const [showSquadWin, setShowSquadWin] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const completedCount = useMemo(
@@ -219,6 +243,9 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
               }
             : current,
         );
+        if (result.squadPowerCurrent >= result.squadPowerMax) {
+          setShowSquadWin(true);
+        }
         return;
       }
 
@@ -241,6 +268,9 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
               }
             : current,
         );
+        if (result.squadPowerCurrent >= result.squadPowerMax) {
+          setShowSquadWin(true);
+        }
       } catch {
         await enqueueCompletion({ id: makeId(), ...payload });
       }
@@ -538,6 +568,45 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
                 Enter
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showSquadWin ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-4">
+          <div className="relative flex flex-col items-center gap-6 text-center">
+            {STARS.map((star) => (
+              <span
+                key={star.key}
+                className="squad-win-star pointer-events-none"
+                style={{
+                  background: star.color,
+                  "--tx": `${star.tx}px`,
+                  "--ty": `${star.ty}px`,
+                  "--delay": `${star.delay}s`,
+                  "--duration": `${star.duration}s`,
+                } as React.CSSProperties}
+              />
+            ))}
+            <p className="squad-win-text text-xs font-black uppercase tracking-widest text-[var(--hero-yellow)]">
+              {profile.heroName} &amp; The Squad
+            </p>
+            <p
+              className="squad-win-text text-7xl font-black uppercase leading-none text-[var(--hero-yellow)] sm:text-9xl"
+              style={{ textShadow: "4px 4px 0 #000, -4px -4px 0 #000, 4px -4px 0 #000, -4px 4px 0 #000" }}
+            >
+              SQUAD WINS!
+            </p>
+            <p className="squad-win-text text-lg font-bold text-white/80">
+              Full power achieved. Heroes unite!
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowSquadWin(false)}
+              className="squad-win-text rounded-2xl border-4 border-black bg-[var(--hero-yellow)] px-8 py-4 text-xl font-black uppercase text-black shadow-[6px_6px_0_#000]"
+            >
+              Keep Going!
+            </button>
           </div>
         </div>
       ) : null}

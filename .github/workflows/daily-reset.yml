@@ -2,24 +2,21 @@ name: Daily Reset
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "0 * * * *" # every hour; endpoint is idempotent on cycle date
   workflow_dispatch:
 
 jobs:
-  run-reset:
+  daily-reset:
     runs-on: ubuntu-latest
     steps:
-      - name: Call daily reset endpoint
-        env:
-          DAILY_RESET_URL: ${{ secrets.DAILY_RESET_URL }}
-          INTERNAL_CRON_SECRET: ${{ secrets.INTERNAL_CRON_SECRET }}
+      - name: Trigger daily reset endpoint
         run: |
-          if [ -z "$DAILY_RESET_URL" ] || [ -z "$INTERNAL_CRON_SECRET" ]; then
-            echo "Missing DAILY_RESET_URL or INTERNAL_CRON_SECRET secret."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "x-internal-secret: ${{ secrets.INTERNAL_CRON_SECRET }}" \
+            "${{ secrets.DAILY_RESET_URL }}/api/internal/daily-reset")
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "Reset endpoint returned non-200 status: $STATUS"
             exit 1
           fi
-
-          curl --fail-with-body --silent --show-error \
-            -X POST \
-            -H "x-internal-secret: $INTERNAL_CRON_SECRET" \
-            "$DAILY_RESET_URL/api/internal/daily-reset"

@@ -19,27 +19,47 @@ export const parentAuthSchema = z.object({
 export const createMissionSchema = z.object({
   profileId: z.string().min(1),
   title: z.string().min(2).max(120),
-  instructions: z.string().min(1).max(280),
-  imageUrl: z.string().url().optional().nullable(),
+  instructions: z.string().min(1).max(1000),
+  imageUrl: z.string().max(2_000_000).optional().nullable(),
   powerValue: z.number().int().min(1).max(100),
   isActive: z.boolean().optional(),
   recurringDaily: z.boolean().optional(),
-  sortOrder: z.number().int().min(1).max(99).optional(),
+  sortOrder: z.number().int().min(1).max(999).optional(),
 });
 
 export const updateMissionSchema = z
   .object({
     title: z.string().min(2).max(120).optional(),
-    instructions: z.string().min(1).max(280).optional(),
-    imageUrl: z.string().url().optional().nullable(),
+    instructions: z.string().min(1).max(1000).optional(),
+    imageUrl: z.string().max(2_000_000).optional().nullable(),
     powerValue: z.number().int().min(1).max(100).optional(),
     isActive: z.boolean().optional(),
     recurringDaily: z.boolean().optional(),
-    sortOrder: z.number().int().min(1).max(99).optional(),
+    sortOrder: z.number().int().min(1).max(999).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field must be provided",
   });
+
+export const createProfileSchema = z.object({
+  heroName: z.string().min(2).max(60),
+  avatarUrl: z.string().min(1).max(2000),
+  uiMode: z.enum(["text", "picture"]),
+});
+
+export const updateProfileSchema = z
+  .object({
+    heroName: z.string().min(2).max(60).optional(),
+    avatarUrl: z.string().min(1).max(2000).optional(),
+    uiMode: z.enum(["text", "picture"]).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  });
+
+export const changePinSchema = z.object({
+  newPin: z.string().regex(/^\d{4,8}$/, "PIN must be 4-8 digits"),
+});
 
 export const awardSquadPowerSchema = z.object({
   delta: z.number().int().min(-100).max(100),

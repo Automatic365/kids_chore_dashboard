@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { clamp, toLocalDateString } from "@/lib/date";
@@ -6,6 +8,7 @@ import {
   AwardSquadPowerInput,
   CompletionResult,
   CreateMissionInput,
+  CreateProfileInput,
   Mission,
   MissionCompletionRequest,
   MissionUncompletionRequest,
@@ -15,8 +18,12 @@ import {
   SquadState,
   UncompletionResult,
   UpdateMissionInput,
+  UpdateProfileInput,
 } from "@/lib/types/domain";
 import { hashPin, verifyPin } from "@/lib/server/pin";
+
+const DATA_DIR = join(process.cwd(), "data");
+const STORE_FILE = join(DATA_DIR, "local-store.json");
 
 interface MissionHistoryRow {
   id: string;
@@ -147,7 +154,32 @@ function initialState(): LocalState {
 }
 
 class LocalStore {
-  private state: LocalState = initialState();
+  private state: LocalState;
+
+  constructor(options?: { skipDiskLoad?: boolean }) {
+    this.state = options?.skipDiskLoad ? initialState() : this.loadFromDisk();
+  }
+
+  private loadFromDisk(): LocalState {
+    try {
+      if (existsSync(STORE_FILE)) {
+        const raw = readFileSync(STORE_FILE, "utf8");
+        return JSON.parse(raw) as LocalState;
+      }
+    } catch {
+      // ignore read errors — fall through to defaults
+    }
+    return initialState();
+  }
+
+  private saveToDisk(): void {
+    try {
+      mkdirSync(DATA_DIR, { recursive: true });
+      writeFileSync(STORE_FILE, JSON.stringify(this.state, null, 2), "utf8");
+    } catch {
+      // ignore write failures (e.g. read-only filesystem in serverless)
+    }
+  }
 
   private getCompletedSetForCycle(cycleDate: string): Set<string> {
     const completedMissionIds = this.state.missionHistory
@@ -257,6 +289,8 @@ class LocalStore {
       this.state.squad.squadPowerMax,
     );
 
+    this.saveToDisk();
+
     return {
       awarded: true,
       alreadyCompleted: false,
@@ -317,6 +351,8 @@ class LocalStore {
       this.state.squad.squadPowerMax,
     );
 
+    this.saveToDisk();
+
     return {
       undone: true,
       wasCompleted: true,
@@ -347,6 +383,7 @@ class LocalStore {
     };
 
     this.state.missions.push(mission);
+    this.saveToDisk();
     return mission;
   }
 
@@ -366,6 +403,7 @@ class LocalStore {
     }
     if (input.sortOrder !== undefined) mission.sortOrder = input.sortOrder;
 
+    this.saveToDisk();
     return { ...mission };
   }
 
@@ -380,6 +418,7 @@ class LocalStore {
     this.state.missionHistory = this.state.missionHistory.filter(
       (item) => item.missionId !== id,
     );
+    this.saveToDisk();
   }
 
   restoreMission(id: string): Mission {
@@ -390,6 +429,7 @@ class LocalStore {
 
     mission.deletedAt = null;
     mission.isActive = true;
+    this.saveToDisk();
     return { ...mission };
   }
 
@@ -399,11 +439,17 @@ class LocalStore {
       0,
       this.state.squad.squadPowerMax,
     );
+    this.saveToDisk();
     return this.getSquadState();
   }
 
   verifyParentPin(pin: string): boolean {
     return verifyPin(pin, this.state.parentPinHash);
+  }
+
+  changeParentPin(newPin: string): void {
+    this.state.parentPinHash = hashPin(newPin);
+    this.saveToDisk();
   }
 
   getParentDashboard(): ParentDashboardData {
@@ -417,7 +463,50 @@ class LocalStore {
 
   resetDaily(cycleDate = toLocalDateString(new Date(), env.appTimeZone)): SquadState {
     this.state.squad.cycleDate = cycleDate;
+    this.saveToDisk();
     return this.getSquadState();
+  }
+
+  createProfile(input: CreateProfileInput): Profile {
+    const profile: Profile = {
+      id: randomUUID(),
+      heroName: input.heroName,
+      avatarUrl: input.avatarUrl,
+      uiMode: input.uiMode,
+      powerLevel: 0,
+    };
+    this.state.profiles.push(profile);
+    this.saveToDisk();
+    return profile;
+  }
+
+  updateProfile(id: string, input: UpdateProfileInput): Profile {
+    const profile = this.state.profiles.find((p) => p.id === id);
+    if (!profile) throw new Error("Profile not found");
+
+    if (input.heroName !== undefined) profile.heroName = input.heroName;
+    if (input.avatarUrl !== undefined) profile.avatarUrl = input.avatarUrl;
+    if (input.uiMode !== undefined) profile.uiMode = input.uiMode;
+
+    this.saveToDisk();
+    return { ...profile };
+  }
+
+  deleteProfile(id: string): void {
+    const profileIndex = this.state.profiles.findIndex((p) => p.id === id);
+    if (profileIndex === -1) throw new Error("Profile not found");
+
+    // soft-delete all missions for this profile
+    const now = new Date().toISOString();
+    for (const mission of this.state.missions) {
+      if (mission.profileId === id && mission.deletedAt === null) {
+        mission.isActive = false;
+        mission.deletedAt = now;
+      }
+    }
+
+    this.state.profiles.splice(profileIndex, 1);
+    this.saveToDisk();
   }
 }
 
@@ -434,5 +523,5 @@ export function getLocalStore(): LocalStore {
 }
 
 export function resetLocalStoreForTests(): void {
-  global.__heroHabitsLocalStore__ = new LocalStore();
+  global.__heroHabitsLocalStore__ = new LocalStore({ skipDiskLoad: true });
 }
