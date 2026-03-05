@@ -31,8 +31,24 @@ Verify:
 - [ ] Confirm GitHub Action workflow is enabled:
   - `.github/workflows/daily-reset.yml`
 - [ ] Trigger once manually using `workflow_dispatch` and verify cycle date stays correct
+- [ ] Confirm workflow logs include:
+  - HTTP status
+  - response headers
+  - response body with `requestId`
+- [ ] Verify failure triage using `docs/ops/daily-reset-runbook.md`
 
-## 4) PWA Update Verification
+## 4) Domain Invariants Verification
+
+- [ ] Validate completion idempotency (duplicate complete does not award twice)
+- [ ] Validate undo lock when points are spent
+- [ ] Validate reward return restores points and allows undo retry
+- [ ] Validate force undo is parent-auth only
+
+Reference docs:
+- `docs/architecture/invariants.md`
+- `docs/architecture/state-machine.md`
+
+## 5) PWA Update Verification
 
 - [ ] Install app to home screen
 - [ ] Deploy a change

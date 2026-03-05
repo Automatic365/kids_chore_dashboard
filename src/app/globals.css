@@ -7,6 +7,7 @@
   --hero-ink: #0e1324;
   --hero-panel: #12203e;
   --hero-paper: #eef3ff;
+  --touch-target-min: 44px;
 }
 
 * {
@@ -62,6 +63,29 @@ h3,
 .comic-card-interactive:active {
   transform: translate(1px, 1px);
   box-shadow: 4px 4px 0 #000;
+}
+
+.touch-target {
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+}
+
+.status-chip {
+  border: 2px solid #000;
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.panel-title {
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .meter-wrap {

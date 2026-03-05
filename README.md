@@ -126,3 +126,10 @@ If no key is set, the app falls back to deterministic non-AI mission generation.
 - Mission image upload UI currently accepts image URLs for MVP speed.
 - Default demo data is preloaded in local fallback mode.
 - Release checklist: see `docs/release-checklist.md`.
+- Architecture docs:
+  - `docs/architecture/overview.md`
+  - `docs/architecture/invariants.md`
+  - `docs/architecture/parity-matrix.md`
+  - `docs/architecture/state-machine.md`
+- Ops docs:
+  - `docs/ops/daily-reset-runbook.md`

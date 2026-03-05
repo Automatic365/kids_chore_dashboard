@@ -11,11 +11,31 @@ jobs:
     steps:
       - name: Trigger daily reset endpoint
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          set -euo pipefail
+
+          BODY_FILE="$(mktemp)"
+          HEADER_FILE="$(mktemp)"
+
+          CURL_EXIT=0
+          STATUS=$(curl -sS -L --retry 2 --retry-delay 2 --max-time 30 \
+            -o "$BODY_FILE" \
+            -D "$HEADER_FILE" \
+            -w "%{http_code}" \
             -X POST \
             -H "x-internal-secret: ${{ secrets.INTERNAL_CRON_SECRET }}" \
-            "${{ secrets.DAILY_RESET_URL }}/api/internal/daily-reset")
+            "${{ secrets.DAILY_RESET_URL }}/api/internal/daily-reset") || CURL_EXIT=$?
+
           echo "HTTP status: $STATUS"
+          echo "Response headers:"
+          sed -n '1,40p' "$HEADER_FILE"
+          echo "Response body:"
+          sed -n '1,120p' "$BODY_FILE"
+
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            echo "Curl failed with exit code: $CURL_EXIT"
+            exit 1
+          fi
+
           if [ "$STATUS" != "200" ]; then
             echo "Reset endpoint returned non-200 status: $STATUS"
             exit 1

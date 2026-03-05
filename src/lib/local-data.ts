@@ -3,6 +3,7 @@
 import { openDB } from "idb";
 
 import { clamp, toLocalDateString } from "@/lib/date";
+import { computeNextStreakState, evaluateUndoEligibility } from "@/lib/game-rules";
 import { publicEnv } from "@/lib/public-env";
 import { generateRewardStickerDataUrl } from "@/lib/reward-art";
 import { sha256Hex } from "@/lib/security/hash-client";
@@ -219,12 +220,6 @@ function randomId(): string {
   }
 
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function previousDate(dateString: string): string {
-  const date = new Date(`${dateString}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
 }
 
 async function getDb() {
@@ -600,13 +595,13 @@ export async function localCompleteMission(
   };
 
   if (!hadCompletionTodayBefore) {
-    const yesterday = previousDate(squad.cycleDate);
-    if (nextProfile.lastStreakDate === yesterday) {
-      nextProfile.currentStreak += 1;
-    } else if (nextProfile.lastStreakDate !== squad.cycleDate) {
-      nextProfile.currentStreak = 1;
-    }
-    nextProfile.lastStreakDate = squad.cycleDate;
+    const nextStreak = computeNextStreakState({
+      currentStreak: nextProfile.currentStreak,
+      lastStreakDate: nextProfile.lastStreakDate,
+      cycleDate: squad.cycleDate,
+    });
+    nextProfile.currentStreak = nextStreak.currentStreak;
+    nextProfile.lastStreakDate = nextStreak.lastStreakDate;
   }
 
   const nextSquad: SquadState = {
@@ -703,13 +698,19 @@ export async function localUncompleteMission(
     };
   }
 
-  if (!input.force && profile.powerLevel < targetRow.pointsAwarded) {
+  const undoPolicy = evaluateUndoEligibility({
+    force: input.force,
+    profilePowerLevel: profile.powerLevel,
+    pointsAwarded: targetRow.pointsAwarded,
+  });
+
+  if (!undoPolicy.allowed) {
     await tx.done;
     return {
       undone: false,
       wasCompleted: true,
-      insufficientUnspentPoints: true,
-      pointsRequiredToUndo: targetRow.pointsAwarded,
+      insufficientUnspentPoints: undoPolicy.insufficientUnspentPoints,
+      pointsRequiredToUndo: undoPolicy.pointsRequiredToUndo,
       profilePowerLevel: profile.powerLevel,
       squadPowerCurrent: squad.squadPowerCurrent,
       squadPowerMax: squad.squadPowerMax,

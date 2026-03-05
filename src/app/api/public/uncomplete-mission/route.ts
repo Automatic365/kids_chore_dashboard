@@ -1,33 +1,27 @@
-import { NextResponse } from "next/server";
-
 import { isParentAuthenticated } from "@/lib/server/auth";
+import { err, getRequestId, mapRouteErrorStatus, ok } from "@/lib/server/api";
 import { getRepository } from "@/lib/server/repository";
 import { missionUncompletionSchema } from "@/lib/server/schemas";
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
   const body = await request.json().catch(() => null);
   const parsed = missionUncompletionSchema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid request", details: parsed.error.flatten() },
-      { status: 400 },
-    );
+    return err(400, "INVALID_REQUEST", "Invalid request", requestId, parsed.error.flatten());
   }
 
   if (parsed.data.force && !(await isParentAuthenticated())) {
-    return NextResponse.json(
-      { error: "Unauthorized parent override" },
-      { status: 401 },
-    );
+    return err(401, "UNAUTHORIZED", "Unauthorized parent override", requestId);
   }
 
   try {
     const repo = getRepository();
     const result = await repo.uncompleteMission(parsed.data);
-    return NextResponse.json({ result });
+    return ok({ result }, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return err(mapRouteErrorStatus(message), "UNDO_MISSION_FAILED", message, requestId);
   }
 }

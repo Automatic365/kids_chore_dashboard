@@ -55,6 +55,7 @@ export interface MissionUncompletionRequest {
 }
 
 export interface CompletionResult {
+  // A mission awards at most once per cycle for recurring missions and once ever for one-off missions.
   awarded: boolean;
   alreadyCompleted: boolean;
   profilePowerLevel: number;
@@ -63,6 +64,7 @@ export interface CompletionResult {
 }
 
 export interface UncompletionResult {
+  // Undo can be blocked when points were already spent unless parent override force=true is used.
   undone: boolean;
   wasCompleted: boolean;
   insufficientUnspentPoints?: boolean;
@@ -153,6 +155,7 @@ export interface ReturnRewardInput {
 }
 
 export interface ClaimRewardResult {
+  // Rewards are single-claim per profile/reward pair in current model.
   claimed: boolean;
   insufficientPoints: boolean;
   alreadyClaimed: boolean;
@@ -161,6 +164,7 @@ export interface ClaimRewardResult {
 }
 
 export interface ReturnRewardResult {
+  // Returning a reward removes its claim row and restores deducted power.
   returned: boolean;
   restoredPoints: number;
   newPowerLevel: number;

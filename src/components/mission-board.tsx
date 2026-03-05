@@ -698,7 +698,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
               className="h-full w-full text-left"
             >
             {mission.recurringDaily ? (
-              <span className="absolute top-2 right-2 z-10 rounded-full border-2 border-black bg-[var(--hero-yellow)] px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-black">
+              <span className="status-chip absolute top-2 right-2 z-10 bg-[var(--hero-yellow)] text-black">
                 Daily
               </span>
             ) : null}
@@ -744,7 +744,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
                   <button
                     type="button"
                     onClick={() => void handleUndo(mission)}
-                    className="rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase text-black shadow-[4px_4px_0_#000]"
+                    className="touch-target rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase text-black shadow-[4px_4px_0_#000]"
                   >
                     Undo
                   </button>
@@ -812,7 +812,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
         <button
           type="button"
           onClick={() => setShowTrophyCase((current) => !current)}
-          className="w-full rounded-lg border-2 border-black bg-white px-3 py-2 text-sm font-black uppercase text-black"
+          className="touch-target w-full rounded-lg border-2 border-black bg-white px-3 py-2 text-sm font-black uppercase text-black"
         >
           {showTrophyCase ? "Hide Trophy Case" : "Show Trophy Case"}
         </button>
@@ -843,7 +843,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
                     type="button"
                     onClick={() => void handleReturnClaim(claim)}
                     disabled={Boolean(returningClaimById[claim.id])}
-                    className="mt-1 w-full rounded-md border-2 border-black bg-amber-300 px-1 py-1 text-[9px] font-black uppercase text-black disabled:opacity-60"
+                    className="touch-target mt-1 w-full rounded-md border-2 border-black bg-amber-300 px-1 py-1 text-[9px] font-black uppercase text-black disabled:opacity-60"
                   >
                     {returningClaimById[claim.id] ? "Returning..." : "Give Back"}
                   </button>
@@ -858,7 +858,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
         <button
           type="button"
           onClick={() => setShowHistory((current) => !current)}
-          className="w-full rounded-lg border-2 border-black bg-white px-3 py-2 text-sm font-black uppercase text-black"
+          className="touch-target w-full rounded-lg border-2 border-black bg-white px-3 py-2 text-sm font-black uppercase text-black"
         >
           {showHistory ? "Hide Mission Log" : "Show Mission Log"}
         </button>

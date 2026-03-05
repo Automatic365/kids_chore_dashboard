@@ -72,6 +72,25 @@ async function withFallback<T>(
   }
 }
 
+type ErrorPayload = {
+  error?: string | { message?: string };
+};
+
+function getApiErrorMessage(payload: ErrorPayload, fallback: string): string {
+  if (typeof payload.error === "string" && payload.error.length > 0) {
+    return payload.error;
+  }
+  if (
+    typeof payload.error === "object" &&
+    payload.error !== null &&
+    typeof payload.error.message === "string" &&
+    payload.error.message.length > 0
+  ) {
+    return payload.error.message;
+  }
+  return fallback;
+}
+
 export async function fetchProfiles(): Promise<Profile[]> {
   return withFallback(
     async () => {
@@ -127,8 +146,8 @@ export async function completeMission(payload: {
   });
 
   if (!response.ok) {
-    const err = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? "Mission completion failed");
+    const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+    throw new Error(getApiErrorMessage(err, "Mission completion failed"));
   }
 
   const data = (await response.json()) as { result: CompletionResult };
@@ -149,8 +168,8 @@ export async function uncompleteMission(
   });
 
   if (!response.ok) {
-    const err = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? "Mission undo failed");
+    const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+    throw new Error(getApiErrorMessage(err, "Mission undo failed"));
   }
 
   const data = (await response.json()) as { result: UncompletionResult };
@@ -415,8 +434,8 @@ export async function claimReward(input: ClaimRewardInput): Promise<ClaimRewardR
     body: JSON.stringify(input),
   });
   if (!response.ok) {
-    const err = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? "Claim failed");
+    const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+    throw new Error(getApiErrorMessage(err, "Claim failed"));
   }
   const data = (await response.json()) as { result: ClaimRewardResult };
   return data.result;
@@ -431,8 +450,8 @@ export async function returnReward(input: ReturnRewardInput): Promise<ReturnRewa
         body: JSON.stringify(input),
       });
       if (!response.ok) {
-        const err = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(err.error ?? "Return reward failed");
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Return reward failed"));
       }
       const data = (await response.json()) as { result: ReturnRewardResult };
       return data.result;

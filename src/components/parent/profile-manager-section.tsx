@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   createProfile as createProfileRequest,
@@ -18,16 +18,20 @@ interface ProfileManagerSectionProps {
   pushToast: (type: "success" | "error", text: string) => void;
 }
 
+interface ProfileDraft {
+  heroName: string;
+  avatarUrl: string;
+  uiMode: UiMode;
+}
+
 export function ProfileManagerSection({
   profiles,
   onRefresh,
   pushToast,
 }: ProfileManagerSectionProps) {
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editAvatar, setEditAvatar] = useState("");
-  const [editMode, setEditMode] = useState<UiMode>("text");
-  const [saving, setSaving] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, ProfileDraft>>({});
+  const [savingById, setSavingById] = useState<Record<string, boolean>>({});
+  const [deletingById, setDeletingById] = useState<Record<string, boolean>>({});
   const [newName, setNewName] = useState("");
   const [newAvatar, setNewAvatar] = useState("/avatars/captain.svg");
   const [newMode, setNewMode] = useState<UiMode>("text");
@@ -36,33 +40,55 @@ export function ProfileManagerSection({
     null,
   );
 
-  function startEdit(profile: Profile) {
-    setEditId(profile.id);
-    setEditName(profile.heroName);
-    setEditAvatar(profile.avatarUrl);
-    setEditMode(profile.uiMode);
+  useEffect(() => {
+    setDrafts(
+      Object.fromEntries(
+        profiles.map((profile) => [
+          profile.id,
+          {
+            heroName: profile.heroName,
+            avatarUrl: profile.avatarUrl,
+            uiMode: profile.uiMode,
+          } satisfies ProfileDraft,
+        ]),
+      ),
+    );
+  }, [profiles]);
+
+  function updateDraft(profileId: string, patch: Partial<ProfileDraft>) {
+    setDrafts((current) => {
+      const base = current[profileId] ?? {
+        heroName: "",
+        avatarUrl: "/avatars/captain.svg",
+        uiMode: "text" as UiMode,
+      };
+      return {
+        ...current,
+        [profileId]: { ...base, ...patch },
+      };
+    });
   }
 
-  function cancelEdit() {
-    setEditId(null);
-  }
+  async function saveProfile(profile: Profile) {
+    const draft = drafts[profile.id];
+    if (!draft || !draft.heroName.trim()) {
+      pushToast("error", "Hero name is required.");
+      return;
+    }
 
-  async function saveEdit() {
-    if (!editId || !editName.trim()) return;
-    setSaving(true);
+    setSavingById((current) => ({ ...current, [profile.id]: true }));
     try {
-      await updateProfileRequest(editId, {
-        heroName: editName.trim(),
-        avatarUrl: editAvatar,
-        uiMode: editMode,
+      await updateProfileRequest(profile.id, {
+        heroName: draft.heroName.trim(),
+        avatarUrl: draft.avatarUrl,
+        uiMode: draft.uiMode,
       });
-      pushToast("success", "Hero updated.");
-      setEditId(null);
+      pushToast("success", `Updated "${draft.heroName.trim()}".`);
       await onRefresh();
     } catch {
       pushToast("error", "Failed to update hero.");
     } finally {
-      setSaving(false);
+      setSavingById((current) => ({ ...current, [profile.id]: false }));
     }
   }
 
@@ -72,12 +98,15 @@ export function ProfileManagerSection({
     );
     if (!confirmed) return;
 
+    setDeletingById((current) => ({ ...current, [profile.id]: true }));
     try {
       await deleteProfileRequest(profile.id);
       pushToast("success", `Removed "${profile.heroName}".`);
       await onRefresh();
     } catch {
       pushToast("error", "Failed to remove hero.");
+    } finally {
+      setDeletingById((current) => ({ ...current, [profile.id]: false }));
     }
   }
 
@@ -103,12 +132,14 @@ export function ProfileManagerSection({
     }
   }
 
-  async function handleGenerateEditAvatar() {
-    if (!editId || !editName.trim()) return;
-    setGeneratingAvatarForId(editId);
+  async function handleGenerateEditAvatar(profileId: string) {
+    const draft = drafts[profileId];
+    if (!draft || !draft.heroName.trim()) return;
+
+    setGeneratingAvatarForId(profileId);
     try {
-      const value = await generateAvatar(editName.trim());
-      setEditAvatar(value);
+      const value = await generateAvatar(draft.heroName.trim());
+      updateDraft(profileId, { avatarUrl: value });
       pushToast("success", "Avatar generated.");
     } catch {
       pushToast("error", "Avatar generation failed.");
@@ -120,94 +151,92 @@ export function ProfileManagerSection({
   return (
     <section className="comic-card p-4">
       <h2 className="text-xl font-black uppercase text-white">Heroes</h2>
+      <p className="mt-1 text-xs font-bold uppercase text-white/80">
+        Edit each hero&apos;s name and picture directly below.
+      </p>
+
       <div className="mt-3 grid gap-3">
-        {profiles.map((profile) =>
-          editId === profile.id ? (
-            <div
+        {profiles.map((profile) => {
+          const draft =
+            drafts[profile.id] ??
+            ({
+              heroName: profile.heroName,
+              avatarUrl: profile.avatarUrl,
+              uiMode: profile.uiMode,
+            } satisfies ProfileDraft);
+
+          return (
+            <article
               key={profile.id}
               className="grid gap-2 rounded-xl border-2 border-black bg-white p-3 text-black"
             >
+              <div className="flex items-center gap-3">
+                <AvatarDisplay
+                  avatarUrl={draft.avatarUrl}
+                  alt={draft.heroName || profile.heroName}
+                  className="grid h-12 w-12 place-items-center rounded-lg border-2 border-black bg-white object-cover text-xl"
+                />
+                <div>
+                  <p className="text-xs font-black uppercase text-zinc-500">
+                    Current Power: {profile.powerLevel}
+                  </p>
+                </div>
+              </div>
+
               <input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
+                value={draft.heroName}
+                onChange={(e) => updateDraft(profile.id, { heroName: e.target.value })}
                 maxLength={60}
                 placeholder="Hero name"
                 className="rounded-lg border-2 border-black px-3 py-2"
               />
-              <ImagePicker value={editAvatar} onChange={setEditAvatar} placeholder="Avatar URL" />
-              <button
-                type="button"
-                onClick={() => void handleGenerateEditAvatar()}
-                disabled={generatingAvatarForId === profile.id}
-                className="rounded-lg border-2 border-black bg-[var(--hero-yellow)] px-3 py-2 text-xs font-black uppercase text-black disabled:opacity-60"
-              >
-                {generatingAvatarForId === profile.id
-                  ? "Generating Avatar..."
-                  : "AI Generate Avatar"}
-              </button>
+
+              <ImagePicker
+                value={draft.avatarUrl}
+                onChange={(value) => updateDraft(profile.id, { avatarUrl: value })}
+                placeholder="Avatar URL"
+              />
+
               <select
-                value={editMode}
-                onChange={(e) => setEditMode(e.target.value as UiMode)}
+                value={draft.uiMode}
+                onChange={(e) => updateDraft(profile.id, { uiMode: e.target.value as UiMode })}
                 className="rounded-lg border-2 border-black px-3 py-2"
               >
                 <option value="text">Text mode (readers)</option>
                 <option value="picture">Picture mode (toddlers)</option>
               </select>
-              <div className="flex gap-2">
+
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => void saveEdit()}
-                  disabled={saving}
-                  className="flex-1 rounded-lg border-2 border-black bg-[var(--hero-blue)] px-3 py-2 text-sm font-black uppercase text-white disabled:opacity-60"
+                  onClick={() => void saveProfile(profile)}
+                  disabled={Boolean(savingById[profile.id])}
+                  className="rounded-lg border-2 border-black bg-[var(--hero-blue)] px-3 py-2 text-xs font-black uppercase text-white disabled:opacity-60"
                 >
-                  {saving ? "Saving…" : "Save"}
+                  {savingById[profile.id] ? "Saving..." : "Save Changes"}
                 </button>
                 <button
                   type="button"
-                  onClick={cancelEdit}
-                  className="flex-1 rounded-lg border-2 border-black bg-zinc-100 px-3 py-2 text-sm font-black uppercase text-black"
+                  onClick={() => void handleGenerateEditAvatar(profile.id)}
+                  disabled={generatingAvatarForId === profile.id}
+                  className="rounded-lg border-2 border-black bg-[var(--hero-yellow)] px-3 py-2 text-xs font-black uppercase text-black disabled:opacity-60"
                 >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div
-              key={profile.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-black bg-white p-3 text-black"
-            >
-              <div className="flex items-center gap-3">
-                <AvatarDisplay
-                  avatarUrl={profile.avatarUrl}
-                  alt={profile.heroName}
-                  className="grid h-10 w-10 place-items-center rounded-lg border-2 border-black bg-white object-cover text-xl"
-                />
-                <div>
-                  <p className="font-black uppercase">{profile.heroName}</p>
-                  <p className="text-xs font-bold uppercase text-zinc-500">
-                    {profile.uiMode === "text" ? "Text mode" : "Picture mode"} · Lv {profile.powerLevel}
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => startEdit(profile)}
-                  className="rounded-lg border-2 border-black bg-zinc-100 px-3 py-1 text-xs font-black uppercase text-black"
-                >
-                  Edit
+                  {generatingAvatarForId === profile.id
+                    ? "Generating Avatar..."
+                    : "AI Generate Avatar"}
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleDelete(profile)}
-                  className="rounded-lg border-2 border-black bg-[var(--hero-red)] px-3 py-1 text-xs font-black uppercase text-white"
+                  disabled={Boolean(deletingById[profile.id])}
+                  className="rounded-lg border-2 border-black bg-[var(--hero-red)] px-3 py-2 text-xs font-black uppercase text-white disabled:opacity-60"
                 >
-                  Remove
+                  {deletingById[profile.id] ? "Removing..." : "Remove"}
                 </button>
               </div>
-            </div>
-          ),
-        )}
+            </article>
+          );
+        })}
       </div>
 
       <form onSubmit={(e) => void handleCreate(e)} className="mt-4 grid gap-2">
@@ -235,7 +264,7 @@ export function ProfileManagerSection({
           disabled={creating}
           className="rounded-xl border-2 border-black bg-[var(--hero-blue)] px-4 py-2 text-sm font-black uppercase text-white disabled:opacity-60"
         >
-          {creating ? "Adding…" : "Add Hero"}
+          {creating ? "Adding..." : "Add Hero"}
         </button>
       </form>
     </section>

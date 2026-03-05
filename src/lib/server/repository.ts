@@ -1,5 +1,6 @@
 import { toLocalDateString } from "@/lib/date";
 import { env, hasSupabaseAdmin } from "@/lib/env";
+import { evaluateUndoEligibility } from "@/lib/game-rules";
 import { getLocalStore } from "@/lib/server/local-store";
 import { hashPin, verifyPin } from "@/lib/server/pin";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -134,6 +135,12 @@ type SquadRow = {
   squad_power_max: number;
   cycle_date: string;
 };
+
+function unsupportedSupabaseFeature(featureName: string): never {
+  throw new Error(
+    `${featureName} is not yet available in Supabase mode. Use local-first mode (NEXT_PUBLIC_USE_REMOTE_API=false) or apply the required Supabase migrations first.`,
+  );
+}
 
 class LocalRepository implements Repository {
   private readonly store = getLocalStore();
@@ -308,43 +315,43 @@ class SupabaseRepository implements Repository {
   }
 
   async getRewards(): Promise<Reward[]> {
-    throw new Error("Not implemented — requires Supabase migration");
+    unsupportedSupabaseFeature("Rewards");
   }
 
   async createReward(input: CreateRewardInput): Promise<Reward> {
     void input;
-    throw new Error("Not implemented — requires Supabase migration");
+    unsupportedSupabaseFeature("Reward creation");
   }
 
   async updateReward(id: string, input: UpdateRewardInput): Promise<Reward> {
     void id;
     void input;
-    throw new Error("Not implemented — requires Supabase migration");
+    unsupportedSupabaseFeature("Reward updates");
   }
 
   async deleteReward(id: string): Promise<void> {
     void id;
-    throw new Error("Not implemented — requires Supabase migration");
+    unsupportedSupabaseFeature("Reward deletion");
   }
 
   async claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult> {
     void input;
-    throw new Error("Not implemented — requires Supabase migration");
+    unsupportedSupabaseFeature("Reward claiming");
   }
 
   async returnReward(input: ReturnRewardInput): Promise<ReturnRewardResult> {
     void input;
-    throw new Error("Not implemented — requires Supabase migration");
+    unsupportedSupabaseFeature("Reward returns");
   }
 
   async getRewardClaims(profileId: string): Promise<RewardClaimEntry[]> {
     void profileId;
-    throw new Error("Not implemented — requires Supabase migration");
+    unsupportedSupabaseFeature("Reward claims query");
   }
 
   async setSquadGoal(goal: SquadGoal | null): Promise<SquadState> {
     void goal;
-    throw new Error("Not implemented — requires Supabase migration");
+    unsupportedSupabaseFeature("Squad goals");
   }
 
   async getMissionHistory(
@@ -566,27 +573,30 @@ class SupabaseRepository implements Repository {
       };
     }
 
-    if (!input.force) {
-      const { data: profileData, error: profileError } = await admin
-        .from("profiles")
-        .select("power_level")
-        .eq("id", input.profileId)
-        .maybeSingle();
-      if (profileError) throw new Error(profileError.message);
-      const powerLevel = Number(
-        (profileData as { power_level?: number } | null)?.power_level ?? 0,
-      );
-      if (powerLevel < missionRow.power_value) {
-        return {
-          undone: false,
-          wasCompleted: true,
-          insufficientUnspentPoints: true,
-          pointsRequiredToUndo: missionRow.power_value,
-          profilePowerLevel: powerLevel,
-          squadPowerCurrent: squad.squadPowerCurrent,
-          squadPowerMax: squad.squadPowerMax,
-        };
-      }
+    const { data: profileData, error: profileError } = await admin
+      .from("profiles")
+      .select("power_level")
+      .eq("id", input.profileId)
+      .maybeSingle();
+    if (profileError) throw new Error(profileError.message);
+    const powerLevel = Number(
+      (profileData as { power_level?: number } | null)?.power_level ?? 0,
+    );
+    const undoPolicy = evaluateUndoEligibility({
+      force: input.force,
+      profilePowerLevel: powerLevel,
+      pointsAwarded: missionRow.power_value,
+    });
+    if (!undoPolicy.allowed) {
+      return {
+        undone: false,
+        wasCompleted: true,
+        insufficientUnspentPoints: undoPolicy.insufficientUnspentPoints,
+        pointsRequiredToUndo: undoPolicy.pointsRequiredToUndo,
+        profilePowerLevel: powerLevel,
+        squadPowerCurrent: squad.squadPowerCurrent,
+        squadPowerMax: squad.squadPowerMax,
+      };
     }
 
     const { data, error } = await admin.rpc("uncomplete_mission_v1", {

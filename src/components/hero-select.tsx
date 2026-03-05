@@ -64,12 +64,12 @@ export function HeroSelect() {
                   window.setTimeout(() => setCopiedId((current) => (current === profile.id ? null : current)), 2000);
                 });
               }}
-              className="absolute top-2 right-2 z-10 rounded-lg border-2 border-black bg-white/95 px-2 py-1 text-xs font-black uppercase text-black"
+              className="touch-target absolute top-2 right-2 z-10 rounded-lg border-2 border-black bg-white/95 px-2 py-1 text-xs font-black uppercase text-black"
             >
               Share
             </button>
             {copiedId === profile.id ? (
-              <span className="absolute top-12 right-2 z-10 rounded-lg border-2 border-black bg-[var(--hero-yellow)] px-2 py-1 text-[10px] font-black uppercase text-black">
+              <span className="status-chip absolute top-12 right-2 z-10 bg-[var(--hero-yellow)] text-black">
                 Copied!
               </span>
             ) : null}
