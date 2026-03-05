@@ -18,6 +18,7 @@ import {
   localGetSquadState,
   localLoginParent,
   localLogoutParent,
+  localReturnReward,
   localRestoreMission,
   localSetSquadGoal,
   localUncompleteMission,
@@ -42,6 +43,8 @@ import {
   Profile,
   Reward,
   RewardClaimEntry,
+  ReturnRewardInput,
+  ReturnRewardResult,
   SquadGoal,
   SquadState,
   UncompletionResult,
@@ -417,6 +420,25 @@ export async function claimReward(input: ClaimRewardInput): Promise<ClaimRewardR
   }
   const data = (await response.json()) as { result: ClaimRewardResult };
   return data.result;
+}
+
+export async function returnReward(input: ReturnRewardInput): Promise<ReturnRewardResult> {
+  return withFallback(
+    async () => {
+      const response = await fetch("/api/public/return-reward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? "Return reward failed");
+      }
+      const data = (await response.json()) as { result: ReturnRewardResult };
+      return data.result;
+    },
+    () => localReturnReward(input),
+  );
 }
 
 export async function setSquadGoal(goal: SquadGoal | null): Promise<SquadState> {

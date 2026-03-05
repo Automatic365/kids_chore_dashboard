@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   deleteMission as deleteMissionRequest,
+  uncompleteMission as uncompleteMissionRequest,
   updateMission as updateMissionRequest,
 } from "@/lib/client-api";
 import { MissionWithState } from "@/lib/types/domain";
@@ -19,6 +20,7 @@ interface MissionDraft {
   isActive: boolean;
   recurringDaily: boolean;
   sortOrder: number;
+  completedToday: boolean;
 }
 
 function toDraft(mission: MissionWithState): MissionDraft {
@@ -32,6 +34,7 @@ function toDraft(mission: MissionWithState): MissionDraft {
     isActive: mission.isActive,
     recurringDaily: mission.recurringDaily,
     sortOrder: mission.sortOrder,
+    completedToday: mission.completedToday,
   };
 }
 
@@ -49,6 +52,7 @@ export function ManageMissionsSection({
   const [drafts, setDrafts] = useState<Record<string, MissionDraft>>({});
   const [savingById, setSavingById] = useState<Record<string, boolean>>({});
   const [deletingById, setDeletingById] = useState<Record<string, boolean>>({});
+  const [undoingById, setUndoingById] = useState<Record<string, boolean>>({});
   const [autosaveError, setAutosaveError] = useState<string | null>(null);
   const autosaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -167,6 +171,39 @@ export function ManageMissionsSection({
     [onRefresh, pushToast],
   );
 
+  const handleForceUndo = useCallback(
+    async (mission: MissionDraft) => {
+      if (!mission.completedToday) return;
+
+      const ok = window.confirm(
+        `Force undo "${mission.title}"? This will subtract ${mission.powerValue} power even if points were already spent.`,
+      );
+      if (!ok) return;
+
+      setUndoingById((c) => ({ ...c, [mission.id]: true }));
+      try {
+        const result = await uncompleteMissionRequest({
+          missionId: mission.id,
+          profileId: mission.profileId,
+          force: true,
+        });
+        if (result.undone) {
+          pushToast("success", `Force-undo complete for "${mission.title}".`);
+        } else if (!result.wasCompleted) {
+          pushToast("error", "Mission was not completed in this cycle.");
+        } else {
+          pushToast("error", "Force undo failed.");
+        }
+        await onRefresh();
+      } catch {
+        pushToast("error", "Force undo failed.");
+      } finally {
+        setUndoingById((c) => ({ ...c, [mission.id]: false }));
+      }
+    },
+    [onRefresh, pushToast],
+  );
+
   function update(next: MissionDraft) {
     setDrafts((c) => ({ ...c, [next.id]: next }));
     scheduleAutosave(next);
@@ -257,6 +294,15 @@ export function ManageMissionsSection({
                   <span className="text-xs font-black uppercase text-[var(--hero-blue)]">
                     {savingById[mission.id] ? "Saving…" : "Autosave"}
                   </span>
+                  <button
+                    type="button"
+                    disabled={!mission.completedToday || Boolean(undoingById[mission.id])}
+                    onClick={() => void handleForceUndo(mission)}
+                    className="rounded-lg border-2 border-black bg-amber-300 px-3 py-1 text-xs font-black uppercase text-black disabled:opacity-50"
+                    title="Parent override undo"
+                  >
+                    {undoingById[mission.id] ? "Undoing…" : "Force Undo"}
+                  </button>
                   <button
                     type="button"
                     disabled={Boolean(deletingById[mission.id])}

@@ -15,6 +15,7 @@ import {
   fetchSquadState,
   isRemoteApiEnabled,
   loginParent,
+  returnReward,
   uncompleteMission,
 } from "@/lib/client-api";
 import {
@@ -104,6 +105,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [isPressingParentSpot, setIsPressingParentSpot] = useState(false);
+  const [returningClaimById, setReturningClaimById] = useState<Record<string, boolean>>({});
   const [showSquadWin, setShowSquadWin] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -360,6 +362,79 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
           profileId,
         });
 
+        if (!result.undone) {
+          if (result.insufficientUnspentPoints) {
+            const neededPower = Math.max(
+              0,
+              mission.powerValue - result.profilePowerLevel,
+            );
+            let recovered = 0;
+            const claimsToReturn: RewardClaimEntry[] = [];
+            for (const claim of rewardClaims) {
+              claimsToReturn.push(claim);
+              recovered += claim.pointCost;
+              if (result.profilePowerLevel + recovered >= mission.powerValue) {
+                break;
+              }
+            }
+
+            if (
+              claimsToReturn.length > 0 &&
+              result.profilePowerLevel + recovered >= mission.powerValue
+            ) {
+              const names = claimsToReturn
+                .slice(0, 3)
+                .map((claim) => claim.title)
+                .join(", ");
+              const label =
+                claimsToReturn.length > 3
+                  ? `${names}, +${claimsToReturn.length - 3} more`
+                  : names;
+              const ok = window.confirm(
+                `Undo is locked because points were spent.\nReturn ${claimsToReturn.length} reward(s) (${recovered} power) to undo this mission?\n${label}`,
+              );
+              if (ok) {
+                for (const claim of claimsToReturn) {
+                  await returnReward({
+                    profileId,
+                    rewardClaimId: claim.id,
+                  });
+                }
+
+                const retry = await uncompleteMission({
+                  missionId: mission.id,
+                  profileId,
+                });
+                if (retry.undone) {
+                  setProfile((current) =>
+                    current
+                      ? { ...current, powerLevel: retry.profilePowerLevel }
+                      : current,
+                  );
+                  setSquad((current) =>
+                    current
+                      ? {
+                          ...current,
+                          squadPowerCurrent: retry.squadPowerCurrent,
+                          squadPowerMax: retry.squadPowerMax,
+                        }
+                      : current,
+                  );
+                  setEffectText("UNDO COMPLETE!");
+                  window.setTimeout(() => setEffectText(null), 900);
+                  await loadBoard();
+                  return;
+                }
+              }
+            }
+
+            setEffectText(neededPower > 0 ? "RETURN TROPHIES" : "UNDO LOCKED");
+            window.setTimeout(() => setEffectText(null), 1200);
+          }
+          await loadBoard();
+          return;
+        }
+
         setProfile((current) =>
           current ? { ...current, powerLevel: result.profilePowerLevel } : current,
         );
@@ -372,11 +447,13 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
               }
             : current,
         );
+        setEffectText("UNDO COMPLETE!");
+        window.setTimeout(() => setEffectText(null), 900);
       } catch {
         await loadBoard();
       }
     },
-    [loadBoard, profile, profileId, squad, remoteEnabled],
+    [loadBoard, profile, profileId, rewardClaims, squad, remoteEnabled],
   );
 
   const handleClaimReward = useCallback(
@@ -416,6 +493,38 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
       }
     },
     [claimedRewardIds, loadBoard, profile, profileId],
+  );
+
+  const handleReturnClaim = useCallback(
+    async (claim: RewardClaimEntry) => {
+      const ok = window.confirm(
+        `Give back "${claim.title}" and restore ${claim.pointCost} power?`,
+      );
+      if (!ok) {
+        return;
+      }
+
+      setReturningClaimById((current) => ({ ...current, [claim.id]: true }));
+      try {
+        const result = await returnReward({
+          profileId,
+          rewardClaimId: claim.id,
+        });
+        if (result.returned) {
+          setProfile((current) =>
+            current ? { ...current, powerLevel: result.newPowerLevel } : current,
+          );
+          setEffectText("TROPHY RETURNED!");
+          window.setTimeout(() => setEffectText(null), 1000);
+        }
+        await loadBoard();
+      } catch {
+        await loadBoard();
+      } finally {
+        setReturningClaimById((current) => ({ ...current, [claim.id]: false }));
+      }
+    },
+    [loadBoard, profileId],
   );
 
   const startLongPress = useCallback(() => {
@@ -713,21 +822,31 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
               Claim rewards to fill your trophy case.
             </p>
           ) : (
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="mx-auto mt-3 grid w-full max-w-[560px] grid-cols-3 gap-2 md:grid-cols-4">
               {rewardClaims.map((claim) => (
                 <article
                   key={claim.id}
-                  className="rounded-xl border-2 border-black bg-white p-2 text-black"
+                  className="rounded-lg border-2 border-black bg-white p-1.5 text-black"
                 >
                   <AvatarDisplay
                     avatarUrl={claim.imageUrl ?? ""}
                     alt={`${claim.title} sticker`}
-                    className="mb-1 grid h-20 w-full place-items-center rounded-md border-2 border-black bg-[var(--hero-blue)]/20 object-cover text-2xl"
+                    className="mb-1 grid h-14 w-full place-items-center rounded-md border-2 border-black bg-[var(--hero-blue)]/20 object-cover text-lg"
                   />
-                  <p className="line-clamp-1 text-xs font-black uppercase">{claim.title}</p>
-                  <p className="mt-1 text-[10px] font-black uppercase text-zinc-600">
+                  <p className="line-clamp-1 text-[11px] font-black uppercase leading-tight">
+                    {claim.title}
+                  </p>
+                  <p className="mt-0.5 text-[9px] font-black uppercase text-zinc-600">
                     {new Date(claim.claimedAt).toLocaleDateString()}
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleReturnClaim(claim)}
+                    disabled={Boolean(returningClaimById[claim.id])}
+                    className="mt-1 w-full rounded-md border-2 border-black bg-amber-300 px-1 py-1 text-[9px] font-black uppercase text-black disabled:opacity-60"
+                  >
+                    {returningClaimById[claim.id] ? "Returning..." : "Give Back"}
+                  </button>
                 </article>
               ))}
             </div>

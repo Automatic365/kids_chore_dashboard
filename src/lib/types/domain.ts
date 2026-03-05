@@ -51,6 +51,7 @@ export interface MissionCompletionRequest {
 export interface MissionUncompletionRequest {
   missionId: string;
   profileId: string;
+  force?: boolean;
 }
 
 export interface CompletionResult {
@@ -64,6 +65,8 @@ export interface CompletionResult {
 export interface UncompletionResult {
   undone: boolean;
   wasCompleted: boolean;
+  insufficientUnspentPoints?: boolean;
+  pointsRequiredToUndo?: number;
   profilePowerLevel: number;
   squadPowerCurrent: number;
   squadPowerMax: number;
@@ -144,12 +147,23 @@ export interface ClaimRewardInput {
   rewardId: string;
 }
 
+export interface ReturnRewardInput {
+  profileId: string;
+  rewardClaimId: string;
+}
+
 export interface ClaimRewardResult {
   claimed: boolean;
   insufficientPoints: boolean;
   alreadyClaimed: boolean;
   newPowerLevel: number;
   reward: Reward;
+}
+
+export interface ReturnRewardResult {
+  returned: boolean;
+  restoredPoints: number;
+  newPowerLevel: number;
 }
 
 export interface MissionHistoryEntry {

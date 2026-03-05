@@ -10,6 +10,7 @@ export const missionCompletionSchema = z.object({
 export const missionUncompletionSchema = z.object({
   missionId: z.string().min(1),
   profileId: z.string().min(1),
+  force: z.boolean().optional(),
 });
 
 export const parentAuthSchema = z.object({
@@ -97,6 +98,11 @@ export const updateRewardSchema = z
 export const claimRewardSchema = z.object({
   profileId: z.string().min(1),
   rewardId: z.string().min(1),
+});
+
+export const returnRewardSchema = z.object({
+  profileId: z.string().min(1),
+  rewardClaimId: z.string().min(1),
 });
 
 export const setSquadGoalSchema = z.object({

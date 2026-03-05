@@ -23,6 +23,8 @@ import {
   Profile,
   Reward,
   RewardClaimEntry,
+  ReturnRewardInput,
+  ReturnRewardResult,
   SquadState,
   SquadGoal,
   UncompletionResult,
@@ -646,6 +648,10 @@ export async function localCompleteMission(
 export async function localUncompleteMission(
   input: MissionUncompletionRequest,
 ): Promise<UncompletionResult> {
+  if (input.force && !isParentAuthenticatedLocally()) {
+    throw new Error("UNAUTHORIZED");
+  }
+
   const db = await getDb();
   const squad = await ensureCurrentCycle(db);
   const tx = db.transaction(
@@ -690,6 +696,20 @@ export async function localUncompleteMission(
     return {
       undone: false,
       wasCompleted: false,
+      insufficientUnspentPoints: false,
+      profilePowerLevel: profile.powerLevel,
+      squadPowerCurrent: squad.squadPowerCurrent,
+      squadPowerMax: squad.squadPowerMax,
+    };
+  }
+
+  if (!input.force && profile.powerLevel < targetRow.pointsAwarded) {
+    await tx.done;
+    return {
+      undone: false,
+      wasCompleted: true,
+      insufficientUnspentPoints: true,
+      pointsRequiredToUndo: targetRow.pointsAwarded,
       profilePowerLevel: profile.powerLevel,
       squadPowerCurrent: squad.squadPowerCurrent,
       squadPowerMax: squad.squadPowerMax,
@@ -723,6 +743,7 @@ export async function localUncompleteMission(
   return {
     undone: true,
     wasCompleted: true,
+    insufficientUnspentPoints: false,
     profilePowerLevel: nextProfile.powerLevel,
     squadPowerCurrent: nextSquad.squadPowerCurrent,
     squadPowerMax: nextSquad.squadPowerMax,
@@ -1003,6 +1024,49 @@ export async function localClaimReward(
     alreadyClaimed: false,
     newPowerLevel: nextProfile.powerLevel,
     reward,
+  };
+}
+
+export async function localReturnReward(
+  input: ReturnRewardInput,
+): Promise<ReturnRewardResult> {
+  const db = await getDb();
+  const tx = db.transaction(["profiles", "rewardClaims"], "readwrite");
+
+  const profileRow = (await tx.objectStore("profiles").get(
+    input.profileId,
+  )) as StoredProfile | undefined;
+  const profile = profileRow ? normalizeProfile(profileRow) : undefined;
+  if (!profile) {
+    await tx.done;
+    throw new Error("Profile not found");
+  }
+
+  const claim = (await tx.objectStore("rewardClaims").get(
+    input.rewardClaimId,
+  )) as RewardClaimLocal | undefined;
+  if (!claim || claim.profileId !== input.profileId) {
+    await tx.done;
+    return {
+      returned: false,
+      restoredPoints: 0,
+      newPowerLevel: profile.powerLevel,
+    };
+  }
+
+  const nextProfile: Profile = {
+    ...profile,
+    powerLevel: profile.powerLevel + claim.pointCost,
+  };
+
+  await tx.objectStore("profiles").put(nextProfile);
+  await tx.objectStore("rewardClaims").delete(claim.id);
+  await tx.done;
+
+  return {
+    returned: true,
+    restoredPoints: claim.pointCost,
+    newPowerLevel: nextProfile.powerLevel,
   };
 }
 

@@ -69,6 +69,132 @@ describe("local store completion rules", () => {
     expect(undo.profilePowerLevel).toBe(0);
   });
 
+  it("blocks undo when mission points have already been spent on rewards", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-lock-1",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+      clientRequestId: "req-lock-2",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m3",
+      profileId: "captain-alpha",
+      clientRequestId: "req-lock-3",
+      clientCompletedAt: new Date().toISOString(),
+    });
+
+    const claim = store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r1",
+    });
+    expect(claim.claimed).toBe(true);
+    expect(claim.newPowerLevel).toBe(5);
+
+    const undo = store.uncompleteMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+    });
+
+    expect(undo.undone).toBe(false);
+    expect(undo.wasCompleted).toBe(true);
+    expect(undo.insufficientUnspentPoints).toBe(true);
+    expect(undo.pointsRequiredToUndo).toBe(12);
+    expect(undo.profilePowerLevel).toBe(5);
+  });
+
+  it("allows parent force undo even when unspent points are insufficient", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-force-1",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+      clientRequestId: "req-force-2",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m3",
+      profileId: "captain-alpha",
+      clientRequestId: "req-force-3",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r1",
+    });
+
+    const undo = store.uncompleteMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+      force: true,
+    });
+
+    expect(undo.undone).toBe(true);
+    expect(undo.wasCompleted).toBe(true);
+    expect(undo.profilePowerLevel).toBe(0);
+  });
+
+  it("allows undo after giving back a claimed reward", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-return-1",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+      clientRequestId: "req-return-2",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m3",
+      profileId: "captain-alpha",
+      clientRequestId: "req-return-3",
+      clientCompletedAt: new Date().toISOString(),
+    });
+
+    const claim = store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r1",
+    });
+    expect(claim.claimed).toBe(true);
+    expect(claim.newPowerLevel).toBe(5);
+
+    const claims = store.getRewardClaims("captain-alpha");
+    const returned = store.returnReward({
+      profileId: "captain-alpha",
+      rewardClaimId: claims[0]!.id,
+    });
+    expect(returned.returned).toBe(true);
+    expect(returned.newPowerLevel).toBe(30);
+
+    const undo = store.uncompleteMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+    });
+    expect(undo.undone).toBe(true);
+    expect(undo.profilePowerLevel).toBe(18);
+  });
+
   it("deletes a mission and removes it from parent/kid mission lists", () => {
     resetLocalStoreForTests();
     const store = getLocalStore();

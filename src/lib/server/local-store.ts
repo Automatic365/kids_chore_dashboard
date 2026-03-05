@@ -23,6 +23,8 @@ import {
   Reward,
   RewardClaimEntry,
   RewardClaimRow,
+  ReturnRewardInput,
+  ReturnRewardResult,
   SquadGoal,
   SquadState,
   UncompletionResult,
@@ -421,6 +423,19 @@ class LocalStore {
       return {
         undone: false,
         wasCompleted: false,
+        insufficientUnspentPoints: false,
+        profilePowerLevel: profile.powerLevel,
+        squadPowerCurrent: this.state.squad.squadPowerCurrent,
+        squadPowerMax: this.state.squad.squadPowerMax,
+      };
+    }
+
+    if (!input.force && profile.powerLevel < target.pointsAwarded) {
+      return {
+        undone: false,
+        wasCompleted: true,
+        insufficientUnspentPoints: true,
+        pointsRequiredToUndo: target.pointsAwarded,
         profilePowerLevel: profile.powerLevel,
         squadPowerCurrent: this.state.squad.squadPowerCurrent,
         squadPowerMax: this.state.squad.squadPowerMax,
@@ -443,6 +458,7 @@ class LocalStore {
     return {
       undone: true,
       wasCompleted: true,
+      insufficientUnspentPoints: false,
       profilePowerLevel: profile.powerLevel,
       squadPowerCurrent: this.state.squad.squadPowerCurrent,
       squadPowerMax: this.state.squad.squadPowerMax,
@@ -619,6 +635,36 @@ class LocalStore {
       alreadyClaimed: false,
       newPowerLevel: profile.powerLevel,
       reward,
+    };
+  }
+
+  returnReward(input: ReturnRewardInput): ReturnRewardResult {
+    const profile = this.state.profiles.find((item) => item.id === input.profileId);
+    if (!profile) {
+      throw new Error("Profile not found");
+    }
+
+    const claimIndex = this.state.rewardClaims.findIndex(
+      (claim) => claim.id === input.rewardClaimId && claim.profileId === input.profileId,
+    );
+
+    if (claimIndex === -1) {
+      return {
+        returned: false,
+        restoredPoints: 0,
+        newPowerLevel: profile.powerLevel,
+      };
+    }
+
+    const claim = this.state.rewardClaims[claimIndex];
+    this.state.rewardClaims.splice(claimIndex, 1);
+    profile.powerLevel += claim.pointCost;
+    this.saveToDisk();
+
+    return {
+      returned: true,
+      restoredPoints: claim.pointCost,
+      newPowerLevel: profile.powerLevel,
     };
   }
 

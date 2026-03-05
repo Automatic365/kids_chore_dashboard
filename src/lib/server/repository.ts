@@ -20,6 +20,8 @@ import {
   Profile,
   Reward,
   RewardClaimEntry,
+  ReturnRewardInput,
+  ReturnRewardResult,
   SquadGoal,
   SquadState,
   UncompletionResult,
@@ -45,6 +47,7 @@ export interface Repository {
   updateReward(id: string, input: UpdateRewardInput): Promise<Reward>;
   deleteReward(id: string): Promise<void>;
   claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult>;
+  returnReward(input: ReturnRewardInput): Promise<ReturnRewardResult>;
   getRewardClaims(profileId: string): Promise<RewardClaimEntry[]>;
   setSquadGoal(goal: SquadGoal | null): Promise<SquadState>;
   getMissionHistory(profileId: string, days: number): Promise<MissionHistoryEntry[]>;
@@ -199,6 +202,10 @@ class LocalRepository implements Repository {
     return this.store.claimReward(input);
   }
 
+  async returnReward(input: ReturnRewardInput): Promise<ReturnRewardResult> {
+    return this.store.returnReward(input);
+  }
+
   async getRewardClaims(profileId: string): Promise<RewardClaimEntry[]> {
     return this.store.getRewardClaims(profileId);
   }
@@ -321,6 +328,11 @@ class SupabaseRepository implements Repository {
   }
 
   async claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult> {
+    void input;
+    throw new Error("Not implemented — requires Supabase migration");
+  }
+
+  async returnReward(input: ReturnRewardInput): Promise<ReturnRewardResult> {
     void input;
     throw new Error("Not implemented — requires Supabase migration");
   }
@@ -506,6 +518,77 @@ class SupabaseRepository implements Repository {
     const admin = getSupabaseAdmin();
     if (!admin) throw new Error("Supabase is not configured");
 
+    const { data: missionData, error: missionError } = await admin
+      .from("missions")
+      .select("id, power_value, recurring_daily")
+      .eq("id", input.missionId)
+      .eq("profile_id", input.profileId)
+      .maybeSingle();
+    if (missionError) throw new Error(missionError.message);
+    if (!missionData) {
+      throw new Error("Mission not found");
+    }
+
+    const missionRow = missionData as {
+      id: string;
+      power_value: number;
+      recurring_daily: boolean;
+    };
+
+    const squad = await this.getSquadState();
+    let historyQuery = admin
+      .from("mission_history")
+      .select("id")
+      .eq("mission_id", input.missionId)
+      .eq("profile_id", input.profileId);
+    if (missionRow.recurring_daily) {
+      historyQuery = historyQuery.eq("completed_on_local_date", squad.cycleDate);
+    }
+    const { data: completionData, error: completionError } = await historyQuery
+      .limit(1)
+      .maybeSingle();
+    if (completionError) throw new Error(completionError.message);
+    if (!completionData) {
+      const { data: profileData } = await admin
+        .from("profiles")
+        .select("power_level")
+        .eq("id", input.profileId)
+        .maybeSingle();
+      return {
+        undone: false,
+        wasCompleted: false,
+        insufficientUnspentPoints: false,
+        profilePowerLevel: Number(
+          (profileData as { power_level?: number } | null)?.power_level ?? 0,
+        ),
+        squadPowerCurrent: squad.squadPowerCurrent,
+        squadPowerMax: squad.squadPowerMax,
+      };
+    }
+
+    if (!input.force) {
+      const { data: profileData, error: profileError } = await admin
+        .from("profiles")
+        .select("power_level")
+        .eq("id", input.profileId)
+        .maybeSingle();
+      if (profileError) throw new Error(profileError.message);
+      const powerLevel = Number(
+        (profileData as { power_level?: number } | null)?.power_level ?? 0,
+      );
+      if (powerLevel < missionRow.power_value) {
+        return {
+          undone: false,
+          wasCompleted: true,
+          insufficientUnspentPoints: true,
+          pointsRequiredToUndo: missionRow.power_value,
+          profilePowerLevel: powerLevel,
+          squadPowerCurrent: squad.squadPowerCurrent,
+          squadPowerMax: squad.squadPowerMax,
+        };
+      }
+    }
+
     const { data, error } = await admin.rpc("uncomplete_mission_v1", {
       p_mission_id: input.missionId,
       p_profile_id: input.profileId,
@@ -523,6 +606,7 @@ class SupabaseRepository implements Repository {
     return {
       undone: Boolean(result.undone),
       wasCompleted: Boolean(result.was_completed),
+      insufficientUnspentPoints: false,
       profilePowerLevel: Number(result.profile_power_level ?? 0),
       squadPowerCurrent: Number(result.squad_power_current ?? 0),
       squadPowerMax: Number(result.squad_power_max ?? 100),
