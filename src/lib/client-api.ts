@@ -220,7 +220,10 @@ export async function createMission(input: CreateMissionInput): Promise<Mission>
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!response.ok) throw new Error("Mission creation failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Mission creation failed"));
+      }
       const data = (await response.json()) as { mission: Mission };
       return data.mission;
     },
@@ -239,7 +242,10 @@ export async function updateMission(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!response.ok) throw new Error("Mission update failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Mission update failed"));
+      }
       const data = (await response.json()) as { mission: Mission };
       return data.mission;
     },
@@ -253,7 +259,10 @@ export async function deleteMission(id: string): Promise<void> {
       const response = await fetch(`/api/parent/missions/${id}`, {
         method: "DELETE",
       });
-      if (!response.ok) throw new Error("Mission delete failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Mission delete failed"));
+      }
     },
     () => localDeleteMission(id),
   );
@@ -265,7 +274,10 @@ export async function restoreMission(id: string): Promise<Mission> {
       const response = await fetch(`/api/parent/missions/${id}/restore`, {
         method: "POST",
       });
-      if (!response.ok) throw new Error("Mission restore failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Mission restore failed"));
+      }
       const data = (await response.json()) as { mission: Mission };
       return data.mission;
     },
@@ -283,7 +295,10 @@ export async function awardSquadPower(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!response.ok) throw new Error("Squad award failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Squad award failed"));
+      }
       const data = (await response.json()) as { squad: SquadState };
       return data.squad;
     },
@@ -299,7 +314,10 @@ export async function createProfile(input: CreateProfileInput): Promise<Profile>
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!response.ok) throw new Error("Profile creation failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Profile creation failed"));
+      }
       const data = (await response.json()) as { profile: Profile };
       return data.profile;
     },
@@ -318,7 +336,10 @@ export async function updateProfile(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!response.ok) throw new Error("Profile update failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Profile update failed"));
+      }
       const data = (await response.json()) as { profile: Profile };
       return data.profile;
     },
@@ -332,7 +353,10 @@ export async function deleteProfile(id: string): Promise<void> {
       const response = await fetch(`/api/parent/profiles/${id}`, {
         method: "DELETE",
       });
-      if (!response.ok) throw new Error("Profile delete failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Profile delete failed"));
+      }
     },
     () => localDeleteProfile(id),
   );
@@ -346,7 +370,10 @@ export async function changeParentPin(newPin: string): Promise<void> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ newPin }),
       });
-      if (!response.ok) throw new Error("PIN change failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "PIN change failed"));
+      }
     },
     () => localChangeParentPin(newPin),
   );
@@ -389,7 +416,10 @@ export async function createReward(input: CreateRewardInput): Promise<Reward> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!response.ok) throw new Error("Reward creation failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Reward creation failed"));
+      }
       const data = (await response.json()) as { reward: Reward };
       return data.reward;
     },
@@ -405,7 +435,10 @@ export async function updateReward(id: string, input: UpdateRewardInput): Promis
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!response.ok) throw new Error("Reward update failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Reward update failed"));
+      }
       const data = (await response.json()) as { reward: Reward };
       return data.reward;
     },
@@ -417,7 +450,10 @@ export async function deleteReward(id: string): Promise<void> {
   return withFallback(
     async () => {
       const response = await fetch(`/api/parent/rewards/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Reward delete failed");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Reward delete failed"));
+      }
     },
     () => localDeleteReward(id),
   );
@@ -468,7 +504,10 @@ export async function setSquadGoal(goal: SquadGoal | null): Promise<SquadState> 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goal }),
       });
-      if (!response.ok) throw new Error("Failed to set squad goal");
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Failed to set squad goal"));
+      }
       const data = (await response.json()) as { squad: SquadState };
       return data.squad;
     },

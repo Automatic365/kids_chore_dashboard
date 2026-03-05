@@ -1,14 +1,14 @@
-import { NextResponse } from "next/server";
-
 import { isParentAuthenticated } from "@/lib/server/auth";
+import { err, getRequestId, mapRouteErrorStatus, ok } from "@/lib/server/api";
 import { getRepository } from "@/lib/server/repository";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(request);
   if (!(await isParentAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return err(401, "UNAUTHORIZED", "Unauthorized", requestId);
   }
 
   const { id } = await context.params;
@@ -16,9 +16,14 @@ export async function POST(
   try {
     const repo = getRepository();
     const mission = await repo.restoreMission(id);
-    return NextResponse.json({ mission });
+    return ok({ mission }, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Restore failed";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return err(
+      mapRouteErrorStatus(message),
+      "RESTORE_MISSION_FAILED",
+      message,
+      requestId,
+    );
   }
 }

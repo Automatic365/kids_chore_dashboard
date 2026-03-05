@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
-
 import { isParentAuthenticated } from "@/lib/server/auth";
+import { err, getRequestId, mapRouteErrorStatus, ok } from "@/lib/server/api";
 import { getRepository } from "@/lib/server/repository";
 import { updateRewardSchema } from "@/lib/server/schemas";
 
@@ -8,36 +7,46 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(request);
   if (!(await isParentAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return err(401, "UNAUTHORIZED", "Unauthorized", requestId);
   }
 
   const { id } = await context.params;
   const body = await request.json().catch(() => null);
   const parsed = updateRewardSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid reward payload", details: parsed.error.flatten() },
-      { status: 400 },
+    return err(
+      400,
+      "INVALID_REQUEST",
+      "Invalid reward payload",
+      requestId,
+      parsed.error.flatten(),
     );
   }
 
   try {
     const repo = getRepository();
     const reward = await repo.updateReward(id, parsed.data);
-    return NextResponse.json({ reward });
+    return ok({ reward }, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update reward";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return err(
+      mapRouteErrorStatus(message),
+      "UPDATE_REWARD_FAILED",
+      message,
+      requestId,
+    );
   }
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(request);
   if (!(await isParentAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return err(401, "UNAUTHORIZED", "Unauthorized", requestId);
   }
 
   const { id } = await context.params;
@@ -45,9 +54,14 @@ export async function DELETE(
   try {
     const repo = getRepository();
     await repo.deleteReward(id);
-    return NextResponse.json({ ok: true });
+    return ok({}, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete reward";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return err(
+      mapRouteErrorStatus(message),
+      "DELETE_REWARD_FAILED",
+      message,
+      requestId,
+    );
   }
 }

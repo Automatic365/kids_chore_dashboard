@@ -1,29 +1,37 @@
-import { NextResponse } from "next/server";
-
 import { isParentAuthenticated } from "@/lib/server/auth";
+import { err, getRequestId, mapRouteErrorStatus, ok } from "@/lib/server/api";
 import { getRepository } from "@/lib/server/repository";
 import { setSquadGoalSchema } from "@/lib/server/schemas";
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
   if (!(await isParentAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return err(401, "UNAUTHORIZED", "Unauthorized", requestId);
   }
 
   const body = await request.json().catch(() => null);
   const parsed = setSquadGoalSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid goal payload", details: parsed.error.flatten() },
-      { status: 400 },
+    return err(
+      400,
+      "INVALID_REQUEST",
+      "Invalid goal payload",
+      requestId,
+      parsed.error.flatten(),
     );
   }
 
   try {
     const repo = getRepository();
     const squad = await repo.setSquadGoal(parsed.data.goal);
-    return NextResponse.json({ squad });
+    return ok({ squad }, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to set goal";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return err(
+      mapRouteErrorStatus(message),
+      "SET_SQUAD_GOAL_FAILED",
+      message,
+      requestId,
+    );
   }
 }
