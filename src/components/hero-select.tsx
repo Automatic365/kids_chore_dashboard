@@ -107,18 +107,18 @@ export function HeroSelect() {
                   )}
                   textClassName="drop-shadow-[0_3px_0_#000]"
                 />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-4 pt-10 text-white">
-                  <h2 className="truncate text-2xl font-black uppercase sm:text-3xl">
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 border-t-2 border-black bg-[var(--hero-panel)] px-4 py-3 text-white">
+                  <h2 className="truncate text-2xl font-black uppercase leading-none sm:text-3xl">
                     {profile.heroName}
                   </h2>
                   <p
-                    className="mt-1 text-sm font-black uppercase"
+                    className="mt-1 text-sm font-black uppercase leading-tight"
                     style={{ color: getHeroLevel(profile.powerLevel).color }}
                   >
                     Level: {getHeroLevel(profile.powerLevel).name}
                   </p>
                   {profile.currentStreak > 0 ? (
-                    <p className="mt-1 text-xs font-bold uppercase text-[var(--hero-yellow)]">
+                    <p className="mt-1 text-xs font-bold uppercase leading-tight text-[var(--hero-yellow)]">
                       {getStreakBadge(profile.currentStreak) ?? "🔥"} {profile.currentStreak} Day Streak
                     </p>
                   ) : null}
