@@ -1,6 +1,5 @@
-const CACHE_NAME = "hero-habits-v3";
+const CACHE_NAME = "hero-habits-v4";
 const STATIC_ASSETS = [
-  "/",
   "/manifest.webmanifest",
   "/icons/icon-192.svg",
   "/icons/icon-512.svg",
@@ -41,10 +40,17 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   const isSameOrigin = url.origin === self.location.origin;
   const isApiRequest = isSameOrigin && url.pathname.startsWith("/api/");
+  const isNextAsset = isSameOrigin && url.pathname.startsWith("/_next/");
   const isNavigation = event.request.mode === "navigate";
 
   // Always hit network for API calls.
   if (isApiRequest) {
+    return;
+  }
+
+  // Always hit network for Next.js build assets/chunks to avoid stale-deploy mismatch.
+  if (isNextAsset) {
+    event.respondWith(fetch(event.request));
     return;
   }
 
@@ -53,12 +59,14 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, cloned).catch(() => {
-              // Ignore cache write errors.
+          if (response.ok) {
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, cloned).catch(() => {
+                // Ignore cache write errors.
+              });
             });
-          });
+          }
           return response;
         })
         .catch(async () => {
@@ -66,7 +74,11 @@ self.addEventListener("fetch", (event) => {
           if (cached) {
             return cached;
           }
-          return caches.match("/");
+          return new Response("Offline", {
+            status: 503,
+            statusText: "Offline",
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          });
         }),
     );
     return;
@@ -80,14 +92,16 @@ self.addEventListener("fetch", (event) => {
 
       return fetch(event.request)
         .then((response) => {
-          const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            if (isSameOrigin) {
-              cache.put(event.request, cloned).catch(() => {
-                // Ignore cache write errors.
-              });
-            }
-          });
+          if (response.ok) {
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              if (isSameOrigin) {
+                cache.put(event.request, cloned).catch(() => {
+                  // Ignore cache write errors.
+                });
+              }
+            });
+          }
 
           return response;
         })
