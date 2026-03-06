@@ -685,7 +685,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
         {missions.map((mission) => (
           <article
             key={mission.id}
-            className={`comic-card comic-card-interactive relative flex min-h-[170px] flex-col overflow-hidden p-0 text-left ${
+            className={`comic-card comic-card-interactive relative flex min-h-[190px] flex-col overflow-hidden p-0 text-left ${
               mission.completedToday
                 ? "cursor-not-allowed saturate-0 opacity-65"
                 : "hover:-translate-y-1"
@@ -695,7 +695,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
               type="button"
               disabled={mission.completedToday}
               onClick={() => void handleComplete(mission)}
-              className="h-full w-full text-left"
+              className="w-full text-left"
             >
             {mission.recurringDaily ? (
               <span className="status-chip absolute top-2 right-2 z-10 bg-[var(--hero-yellow)] text-black">
@@ -704,31 +704,36 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
             ) : null}
 
             {profile.uiMode === "picture" ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={mission.imageUrl ?? "/missions/default.svg"}
-                  alt={mission.title}
-                  className="h-44 w-full object-cover sm:h-52"
-                />
-                <div className="bg-black/65 p-3">
-                  <p className="text-sm font-black uppercase tracking-wide">
+              <div className="flex flex-col">
+                <div className="w-full bg-[#1f2f5c]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={mission.imageUrl ?? "/missions/default.svg"}
+                    alt={mission.title}
+                    className="aspect-[16/10] w-full object-contain p-2 sm:aspect-[4/3]"
+                  />
+                </div>
+                <div className="space-y-1 bg-black/70 p-3">
+                  <p className="text-base font-black uppercase leading-tight break-words text-white">
+                    {mission.title}
+                  </p>
+                  <p className="text-sm font-black uppercase tracking-wide text-[var(--hero-yellow)]">
                     +{mission.powerValue} Power
                   </p>
-                  <p className="mt-1 text-xs font-bold text-white/90">
+                  <p className="text-xs font-bold leading-snug break-words text-white/90">
                     {mission.instructions}
                   </p>
                 </div>
-              </>
+              </div>
             ) : (
-              <div className="flex h-full flex-col justify-between p-4">
-                <p className="text-2xl font-black uppercase leading-tight text-white">
+              <div className="flex min-h-[190px] flex-col gap-2 p-4">
+                <p className="text-xl font-black uppercase leading-tight break-words text-white sm:text-2xl">
                   {mission.title}
                 </p>
-                <p className="mt-2 text-sm font-bold text-white/85">
+                <p className="text-sm font-bold leading-snug break-words text-white/85">
                   {mission.instructions}
                 </p>
-                <p className="mt-3 text-sm font-bold uppercase text-[var(--hero-yellow)]">
+                <p className="mt-auto text-sm font-bold uppercase text-[var(--hero-yellow)]">
                   +{mission.powerValue} Power
                 </p>
               </div>
