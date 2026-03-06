@@ -980,22 +980,6 @@ export async function localClaimReward(
     };
   }
 
-  const existingClaims = (await tx.objectStore("rewardClaims").getAll()) as RewardClaimLocal[];
-  if (
-    existingClaims.some(
-      (claim) => claim.profileId === input.profileId && claim.rewardId === input.rewardId,
-    )
-  ) {
-    await tx.done;
-    return {
-      claimed: false,
-      insufficientPoints: false,
-      alreadyClaimed: true,
-      newPowerLevel: profile.powerLevel,
-      reward,
-    };
-  }
-
   const nextProfile: Profile = {
     ...profile,
     powerLevel: profile.powerLevel - reward.pointCost,

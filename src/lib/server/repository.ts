@@ -1,6 +1,7 @@
 import { toLocalDateString } from "@/lib/date";
 import { env, hasSupabaseAdmin } from "@/lib/env";
 import { evaluateUndoEligibility } from "@/lib/game-rules";
+import { generateRewardStickerDataUrl } from "@/lib/reward-art";
 import { getLocalStore } from "@/lib/server/local-store";
 import { hashPin, verifyPin } from "@/lib/server/pin";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -134,12 +135,56 @@ type SquadRow = {
   squad_power_current: number;
   squad_power_max: number;
   cycle_date: string;
+  squad_goal_title?: string | null;
+  squad_goal_target_power?: number | null;
+  squad_goal_reward_description?: string | null;
 };
 
-function unsupportedSupabaseFeature(featureName: string): never {
-  throw new Error(
-    `${featureName} is not yet available in Supabase mode. Use local-first mode (NEXT_PUBLIC_USE_REMOTE_API=false) or apply the required Supabase migrations first.`,
-  );
+type RewardRow = {
+  id: string;
+  title: string;
+  description: string;
+  point_cost: number;
+  is_active: boolean;
+  sort_order: number;
+};
+
+type RewardClaimSupabaseRow = {
+  id: string;
+  profile_id: string;
+  reward_id: string;
+  point_cost: number;
+  claimed_at: string;
+  image_url: string | null;
+};
+
+function mapReward(row: RewardRow): Reward {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    pointCost: row.point_cost,
+    isActive: row.is_active,
+    sortOrder: row.sort_order,
+  };
+}
+
+function mapSquadRow(row: SquadRow): SquadState {
+  return {
+    squadPowerCurrent: row.squad_power_current,
+    squadPowerMax: row.squad_power_max,
+    cycleDate: row.cycle_date,
+    squadGoal:
+      row.squad_goal_title &&
+      typeof row.squad_goal_target_power === "number" &&
+      row.squad_goal_reward_description
+        ? {
+            title: row.squad_goal_title,
+            targetPower: row.squad_goal_target_power,
+            rewardDescription: row.squad_goal_reward_description,
+          }
+        : null,
+  };
 }
 
 class LocalRepository implements Repository {
@@ -275,7 +320,9 @@ class SupabaseRepository implements Repository {
 
     const { data, error } = await admin
       .from("squad_state")
-      .select("squad_power_current, squad_power_max, cycle_date")
+      .select(
+        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description",
+      )
       .eq("id", 1)
       .maybeSingle();
 
@@ -290,68 +337,287 @@ class SupabaseRepository implements Repository {
           squad_power_current: 0,
           squad_power_max: 100,
           cycle_date: today,
+          squad_goal_title: null,
+          squad_goal_target_power: null,
+          squad_goal_reward_description: null,
         })
-        .select("squad_power_current, squad_power_max, cycle_date")
+        .select(
+          "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description",
+        )
         .single();
 
       if (insertError) throw new Error(insertError.message);
       const insertedRow = inserted as SquadRow;
 
-      return {
-        squadPowerCurrent: insertedRow.squad_power_current,
-        squadPowerMax: insertedRow.squad_power_max,
-        cycleDate: insertedRow.cycle_date,
-        squadGoal: null,
-      };
+      return mapSquadRow(insertedRow);
     }
     const squadRow = data as SquadRow;
-
-    return {
-      squadPowerCurrent: squadRow.squad_power_current,
-      squadPowerMax: squadRow.squad_power_max,
-      cycleDate: squadRow.cycle_date,
-      squadGoal: null,
-    };
+    return mapSquadRow(squadRow);
   }
 
   async getRewards(): Promise<Reward[]> {
-    unsupportedSupabaseFeature("Rewards");
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { data, error } = await admin
+      .from("rewards")
+      .select("id, title, description, point_cost, is_active, sort_order")
+      .order("sort_order");
+
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as RewardRow[]).map(mapReward);
   }
 
   async createReward(input: CreateRewardInput): Promise<Reward> {
-    void input;
-    unsupportedSupabaseFeature("Reward creation");
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { data, error } = await admin
+      .from("rewards")
+      .insert({
+        title: input.title,
+        description: input.description,
+        point_cost: input.pointCost,
+        is_active: input.isActive ?? true,
+        sort_order: input.sortOrder ?? 1,
+      })
+      .select("id, title, description, point_cost, is_active, sort_order")
+      .single();
+
+    if (error) throw new Error(error.message);
+    return mapReward(data as RewardRow);
   }
 
   async updateReward(id: string, input: UpdateRewardInput): Promise<Reward> {
-    void id;
-    void input;
-    unsupportedSupabaseFeature("Reward updates");
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const payload: Record<string, string | number | boolean> = {};
+    if (input.title !== undefined) payload.title = input.title;
+    if (input.description !== undefined) payload.description = input.description;
+    if (input.pointCost !== undefined) payload.point_cost = input.pointCost;
+    if (input.isActive !== undefined) payload.is_active = input.isActive;
+    if (input.sortOrder !== undefined) payload.sort_order = input.sortOrder;
+
+    const { data, error } = await admin
+      .from("rewards")
+      .update(payload)
+      .eq("id", id)
+      .select("id, title, description, point_cost, is_active, sort_order")
+      .single();
+
+    if (error) throw new Error(error.message);
+    return mapReward(data as RewardRow);
   }
 
   async deleteReward(id: string): Promise<void> {
-    void id;
-    unsupportedSupabaseFeature("Reward deletion");
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { error } = await admin.from("rewards").delete().eq("id", id);
+    if (error) throw new Error(error.message);
   }
 
   async claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult> {
-    void input;
-    unsupportedSupabaseFeature("Reward claiming");
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { data: rewardData, error: rewardError } = await admin
+      .from("rewards")
+      .select("id, title, description, point_cost, is_active, sort_order")
+      .eq("id", input.rewardId)
+      .maybeSingle();
+    if (rewardError) throw new Error(rewardError.message);
+    if (!rewardData) throw new Error("Reward unavailable");
+
+    const reward = mapReward(rewardData as RewardRow);
+    if (!reward.isActive) {
+      throw new Error("Reward unavailable");
+    }
+
+    const { data: profileData, error: profileError } = await admin
+      .from("profiles")
+      .select("id, hero_name, power_level")
+      .eq("id", input.profileId)
+      .maybeSingle();
+    if (profileError) throw new Error(profileError.message);
+    if (!profileData) throw new Error("Profile not found");
+
+    const powerLevel = Number(
+      (profileData as { power_level?: number }).power_level ?? 0,
+    );
+    if (powerLevel < reward.pointCost) {
+      return {
+        claimed: false,
+        insufficientPoints: true,
+        alreadyClaimed: false,
+        newPowerLevel: powerLevel,
+        reward,
+      };
+    }
+
+    const nextPowerLevel = Math.max(0, powerLevel - reward.pointCost);
+    const claimedAt = new Date().toISOString();
+    const heroName = (profileData as { hero_name?: string }).hero_name ?? "Hero";
+
+    const { error: updateProfileError } = await admin
+      .from("profiles")
+      .update({ power_level: nextPowerLevel })
+      .eq("id", input.profileId);
+    if (updateProfileError) throw new Error(updateProfileError.message);
+
+    const { error: insertClaimError } = await admin.from("reward_claims").insert({
+      profile_id: input.profileId,
+      reward_id: input.rewardId,
+      point_cost: reward.pointCost,
+      claimed_at: claimedAt,
+      image_url: generateRewardStickerDataUrl({
+        rewardTitle: reward.title,
+        heroName,
+        claimedAt,
+      }),
+    });
+    if (insertClaimError) throw new Error(insertClaimError.message);
+
+    return {
+      claimed: true,
+      insufficientPoints: false,
+      alreadyClaimed: false,
+      newPowerLevel: nextPowerLevel,
+      reward,
+    };
   }
 
   async returnReward(input: ReturnRewardInput): Promise<ReturnRewardResult> {
-    void input;
-    unsupportedSupabaseFeature("Reward returns");
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { data: claimData, error: claimError } = await admin
+      .from("reward_claims")
+      .select("id, profile_id, point_cost")
+      .eq("id", input.rewardClaimId)
+      .eq("profile_id", input.profileId)
+      .maybeSingle();
+    if (claimError) throw new Error(claimError.message);
+    if (!claimData) {
+      const { data: profileData } = await admin
+        .from("profiles")
+        .select("power_level")
+        .eq("id", input.profileId)
+        .maybeSingle();
+
+      return {
+        returned: false,
+        restoredPoints: 0,
+        newPowerLevel: Number(
+          (profileData as { power_level?: number } | null)?.power_level ?? 0,
+        ),
+      };
+    }
+
+    const restoredPoints = Number(
+      (claimData as { point_cost?: number }).point_cost ?? 0,
+    );
+
+    const { data: profileData, error: profileError } = await admin
+      .from("profiles")
+      .select("power_level")
+      .eq("id", input.profileId)
+      .maybeSingle();
+    if (profileError) throw new Error(profileError.message);
+    const currentPower = Number(
+      (profileData as { power_level?: number } | null)?.power_level ?? 0,
+    );
+    const nextPower = currentPower + restoredPoints;
+
+    const { error: updateError } = await admin
+      .from("profiles")
+      .update({ power_level: nextPower })
+      .eq("id", input.profileId);
+    if (updateError) throw new Error(updateError.message);
+
+    const { error: deleteError } = await admin
+      .from("reward_claims")
+      .delete()
+      .eq("id", input.rewardClaimId)
+      .eq("profile_id", input.profileId);
+    if (deleteError) throw new Error(deleteError.message);
+
+    return {
+      returned: true,
+      restoredPoints,
+      newPowerLevel: nextPower,
+    };
   }
 
   async getRewardClaims(profileId: string): Promise<RewardClaimEntry[]> {
-    void profileId;
-    unsupportedSupabaseFeature("Reward claims query");
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { data, error } = await admin
+      .from("reward_claims")
+      .select("id, profile_id, reward_id, point_cost, claimed_at, image_url")
+      .eq("profile_id", profileId)
+      .order("claimed_at", { ascending: false });
+    if (error) throw new Error(error.message);
+
+    const claimRows = (data ?? []) as RewardClaimSupabaseRow[];
+    if (claimRows.length === 0) return [];
+
+    const rewardIds = Array.from(new Set(claimRows.map((row) => row.reward_id)));
+    const { data: rewardData, error: rewardError } = await admin
+      .from("rewards")
+      .select("id, title, description")
+      .in("id", rewardIds);
+    if (rewardError) throw new Error(rewardError.message);
+
+    const rewardById = new Map(
+      ((rewardData ?? []) as Array<{ id: string; title: string; description: string }>).map(
+        (row) => [row.id, row],
+      ),
+    );
+
+    return claimRows.map((claim) => {
+      const reward = rewardById.get(claim.reward_id);
+      return {
+        id: claim.id,
+        rewardId: claim.reward_id,
+        title: reward?.title ?? "Mystery Reward",
+        description: reward?.description ?? "Reward claimed",
+        pointCost: claim.point_cost,
+        claimedAt: claim.claimed_at,
+        imageUrl: claim.image_url,
+      };
+    });
   }
 
   async setSquadGoal(goal: SquadGoal | null): Promise<SquadState> {
-    void goal;
-    unsupportedSupabaseFeature("Squad goals");
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const payload = goal
+      ? {
+          squad_goal_title: goal.title,
+          squad_goal_target_power: goal.targetPower,
+          squad_goal_reward_description: goal.rewardDescription,
+        }
+      : {
+          squad_goal_title: null,
+          squad_goal_target_power: null,
+          squad_goal_reward_description: null,
+        };
+
+    const { data, error } = await admin
+      .from("squad_state")
+      .update(payload)
+      .eq("id", 1)
+      .select(
+        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description",
+      )
+      .single();
+    if (error) throw new Error(error.message);
+
+    return mapSquadRow(data as SquadRow);
   }
 
   async getMissionHistory(
@@ -744,19 +1010,16 @@ class SupabaseRepository implements Repository {
       .from("squad_state")
       .update({ squad_power_current: nextValue })
       .eq("id", 1)
-      .select("squad_power_current, squad_power_max, cycle_date")
+      .select(
+        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description",
+      )
       .single();
 
     if (error) throw new Error(error.message);
 
     const squadRow = data as SquadRow;
 
-    return {
-      squadPowerCurrent: squadRow.squad_power_current,
-      squadPowerMax: squadRow.squad_power_max,
-      cycleDate: squadRow.cycle_date,
-      squadGoal: null,
-    };
+    return mapSquadRow(squadRow);
   }
 
   async verifyParentPin(pin: string): Promise<boolean> {
@@ -778,14 +1041,15 @@ class SupabaseRepository implements Repository {
   }
 
   async getParentDashboard(): Promise<ParentDashboardData> {
-    const [profiles, missions, trashedMissions, squad] = await Promise.all([
+    const [profiles, missions, trashedMissions, squad, rewards] = await Promise.all([
       this.getProfiles(),
       this.getMissions(),
       this.getTrashedMissions(),
       this.getSquadState(),
+      this.getRewards(),
     ]);
 
-    return { profiles, missions, trashedMissions, squad, rewards: [] };
+    return { profiles, missions, trashedMissions, squad, rewards };
   }
 
   async changeParentPin(newPin: string): Promise<void> {

@@ -293,4 +293,63 @@ describe("local store completion rules", () => {
     expect(claims[0]?.title).toBe("Hero Sticker");
     expect(claims[0]?.imageUrl?.startsWith("data:image/svg+xml")).toBe(true);
   });
+
+  it("allows claiming the same reward more than once", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-repeat-1",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+      clientRequestId: "req-repeat-2",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m3",
+      profileId: "captain-alpha",
+      clientRequestId: "req-repeat-3",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.resetDaily("2099-01-02");
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-repeat-4",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m2",
+      profileId: "captain-alpha",
+      clientRequestId: "req-repeat-5",
+      clientCompletedAt: new Date().toISOString(),
+    });
+    store.completeMission({
+      missionId: "m3",
+      profileId: "captain-alpha",
+      clientRequestId: "req-repeat-6",
+      clientCompletedAt: new Date().toISOString(),
+    });
+
+    const first = store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r1",
+    });
+    const second = store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r1",
+    });
+
+    expect(first.claimed).toBe(true);
+    expect(second.claimed).toBe(true);
+    expect(second.alreadyClaimed).toBe(false);
+
+    const claims = store.getRewardClaims("captain-alpha");
+    expect(claims.length).toBe(2);
+  });
 });

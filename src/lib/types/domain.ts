@@ -155,7 +155,7 @@ export interface ReturnRewardInput {
 }
 
 export interface ClaimRewardResult {
-  // Rewards are single-claim per profile/reward pair in current model.
+  // Rewards can be claimed repeatedly when a profile has enough power.
   claimed: boolean;
   insufficientPoints: boolean;
   alreadyClaimed: boolean;

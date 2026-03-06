@@ -601,19 +601,6 @@ class LocalStore {
       };
     }
 
-    const existingClaim = this.state.rewardClaims.find(
-      (claim) => claim.profileId === input.profileId && claim.rewardId === input.rewardId,
-    );
-    if (existingClaim) {
-      return {
-        claimed: false,
-        insufficientPoints: false,
-        alreadyClaimed: true,
-        newPowerLevel: profile.powerLevel,
-        reward,
-      };
-    }
-
     profile.powerLevel -= reward.pointCost;
     const claimedAt = new Date().toISOString();
     this.state.rewardClaims.push({
