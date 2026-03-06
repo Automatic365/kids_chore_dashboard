@@ -9,10 +9,30 @@ jobs:
   daily-reset:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate scheduler configuration
+        run: |
+          set -euo pipefail
+
+          URL="${{ secrets.DAILY_RESET_URL }}"
+          SECRET="${{ secrets.INTERNAL_CRON_SECRET }}"
+
+          if [ -z "${URL}" ] || [ -z "${SECRET}" ]; then
+            echo "::warning::Daily reset skipped because DAILY_RESET_URL or INTERNAL_CRON_SECRET is not configured."
+            echo "Configure both repo secrets to enable automated reset calls."
+            exit 0
+          fi
+
+          if ! echo "${URL}" | grep -Eq '^https?://[^/]+$'; then
+            echo "::error::DAILY_RESET_URL must be a base host URL like https://your-app.vercel.app"
+            exit 1
+          fi
+
       - name: Trigger daily reset endpoint
         run: |
           set -euo pipefail
 
+          BASE_URL="${{ secrets.DAILY_RESET_URL }}"
+          SECRET="${{ secrets.INTERNAL_CRON_SECRET }}"
           BODY_FILE="$(mktemp)"
           HEADER_FILE="$(mktemp)"
 
@@ -22,8 +42,9 @@ jobs:
             -D "$HEADER_FILE" \
             -w "%{http_code}" \
             -X POST \
-            -H "x-internal-secret: ${{ secrets.INTERNAL_CRON_SECRET }}" \
-            "${{ secrets.DAILY_RESET_URL }}/api/internal/daily-reset") || CURL_EXIT=$?
+            -H "x-internal-secret: ${SECRET}" \
+            -H "x-request-id: gha-daily-reset-${{ github.run_id }}" \
+            "${BASE_URL}/api/internal/daily-reset") || CURL_EXIT=$?
 
           echo "HTTP status: $STATUS"
           echo "Response headers:"
