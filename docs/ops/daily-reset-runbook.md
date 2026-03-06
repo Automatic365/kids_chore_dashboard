@@ -21,6 +21,20 @@ curl -i -X POST \
 
 Expected: `200` and JSON with `ok: true`.
 
+## Automated Verification
+
+Run API-level reset behavior tests locally:
+
+```bash
+npm run test -- src/app/api/internal/daily-reset/route.test.ts
+```
+
+This test file verifies:
+- Unauthorized response when internal secret is invalid or missing.
+- Authorized reset success path.
+- Error mapping for reset failures.
+- Request-id presence in responses.
+
 ## Common Failure Modes
 
 1. `401 UNAUTHORIZED`

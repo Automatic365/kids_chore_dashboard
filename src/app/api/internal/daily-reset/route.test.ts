@@ -28,6 +28,29 @@ describe("POST /api/internal/daily-reset", () => {
     toLocalDateStringMock.mockClear();
   });
 
+  it("returns 401 when internal secret header is missing", async () => {
+    const request = new Request("http://localhost/api/internal/daily-reset", {
+      method: "POST",
+      headers: {
+        "x-request-id": "req-auth-missing",
+      },
+    });
+
+    const response = await POST(request);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      requestId: string;
+      error: { code: string; message: string };
+    };
+
+    expect(response.status).toBe(401);
+    expect(payload.ok).toBe(false);
+    expect(payload.requestId).toBe("req-auth-missing");
+    expect(payload.error.code).toBe("UNAUTHORIZED");
+    expect(payload.error.message).toContain("Invalid internal secret");
+    expect(resetDailyMock).not.toHaveBeenCalled();
+  });
+
   it("returns 401 for invalid internal secret", async () => {
     const request = new Request("http://localhost/api/internal/daily-reset", {
       method: "POST",
@@ -81,6 +104,35 @@ describe("POST /api/internal/daily-reset", () => {
     expect(payload.cycleDate).toBe("2026-03-05");
     expect(payload.squad.cycleDate).toBe("2026-03-05");
     expect(resetDailyMock).toHaveBeenCalledWith("2026-03-05");
+  });
+
+  it("generates a request id when one is not provided", async () => {
+    resetDailyMock.mockResolvedValue({
+      squadPowerCurrent: 0,
+      squadPowerMax: 100,
+      cycleDate: "2026-03-05",
+      squadGoal: null,
+    });
+
+    const request = new Request("http://localhost/api/internal/daily-reset", {
+      method: "POST",
+      headers: {
+        "x-internal-secret": "test-secret",
+      },
+    });
+
+    const response = await POST(request);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      requestId: string;
+      cycleDate: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(typeof payload.requestId).toBe("string");
+    expect(payload.requestId.length).toBeGreaterThan(0);
+    expect(payload.cycleDate).toBe("2026-03-05");
   });
 
   it("returns 500 with request id on reset failure", async () => {

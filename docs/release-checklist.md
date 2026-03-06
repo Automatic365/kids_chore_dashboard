@@ -37,7 +37,22 @@ Verify:
   - response body with `requestId`
 - [ ] Verify failure triage using `docs/ops/daily-reset-runbook.md`
 
-## 4) Domain Invariants Verification
+## 4) Reliability Test Gates
+
+Run before each release candidate:
+
+- [ ] Unit/API route tests pass:
+  - `npm run test`
+- [ ] Reliability E2E pack passes:
+  - `npm run e2e -- tests/e2e/offline-sync.spec.ts tests/e2e/parent-toggle-reflect.spec.ts tests/e2e/cycle-reset-simulation.spec.ts`
+  - Note: `offline-sync.spec.ts` skips by design when `NEXT_PUBLIC_USE_REMOTE_API=false`
+- [ ] Daily reset route tests include auth and request-id behavior:
+  - `src/app/api/internal/daily-reset/route.test.ts`
+- [ ] Parent auth route tests cover dashboard/summary reads:
+  - `src/app/api/parent/dashboard/route.test.ts`
+  - `src/app/api/parent/summary/route.test.ts`
+
+## 5) Domain Invariants Verification
 
 - [ ] Validate completion idempotency (duplicate complete does not award twice)
 - [ ] Validate undo lock when points are spent
@@ -48,7 +63,7 @@ Reference docs:
 - `docs/architecture/invariants.md`
 - `docs/architecture/state-machine.md`
 
-## 5) PWA Update Verification
+## 6) PWA Update Verification
 
 - [ ] Install app to home screen
 - [ ] Deploy a change
