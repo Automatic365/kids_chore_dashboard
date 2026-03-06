@@ -28,6 +28,7 @@ jobs:
           fi
 
       - name: Trigger daily reset endpoint
+        if: ${{ secrets.DAILY_RESET_URL != '' && secrets.INTERNAL_CRON_SECRET != '' }}
         run: |
           set -euo pipefail
 
