@@ -111,6 +111,10 @@ h3,
   animation: pop 0.9s ease forwards;
 }
 
+.hero-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.75);
+}
+
 @keyframes pop {
   0% {
     transform: scale(0.1) rotate(-12deg);

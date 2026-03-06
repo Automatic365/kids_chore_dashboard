@@ -352,4 +352,24 @@ describe("local store completion rules", () => {
     const claims = store.getRewardClaims("captain-alpha");
     expect(claims.length).toBe(2);
   });
+
+  it("marks notifications read and clears unread count", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-note-1",
+      clientCompletedAt: new Date().toISOString(),
+    });
+
+    expect(store.getUnreadNotificationCount()).toBe(1);
+    const notifications = store.getNotifications();
+    expect(notifications[0]?.readAt).toBeNull();
+
+    const marked = store.markNotificationsRead();
+    expect(marked.markedCount).toBe(1);
+    expect(store.getUnreadNotificationCount()).toBe(0);
+  });
 });

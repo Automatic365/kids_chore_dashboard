@@ -1,4 +1,5 @@
 import { err, getRequestId, mapRouteErrorStatus, ok } from "@/lib/server/api";
+import { reportError } from "@/lib/monitoring";
 import { getRepository } from "@/lib/server/repository";
 import { claimRewardSchema } from "@/lib/server/schemas";
 
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
     const result = await repo.claimReward(parsed.data);
     return ok({ result }, requestId);
   } catch (error) {
+    reportError(error, { route: "public_claim_reward" });
     const message = error instanceof Error ? error.message : "Claim failed";
     return err(mapRouteErrorStatus(message), "CLAIM_REWARD_FAILED", message, requestId);
   }

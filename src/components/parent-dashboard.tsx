@@ -11,6 +11,7 @@ import { BonusMissionSection } from "@/components/parent/bonus-mission-section";
 import { CycleSummarySection } from "@/components/parent/cycle-summary-section";
 import { ManageMissionsSection } from "@/components/parent/manage-missions-section";
 import { MissionTemplatesSection } from "@/components/parent/mission-templates-section";
+import { NotificationFeedSection } from "@/components/parent/notification-feed-section";
 import { PinChangeSection } from "@/components/parent/pin-change-section";
 import { ProfileManagerSection } from "@/components/parent/profile-manager-section";
 import { RewardManagerSection } from "@/components/parent/reward-manager-section";
@@ -177,6 +178,8 @@ export function ParentDashboard() {
         onRefresh={refresh}
         pushToast={pushToast}
       />
+
+      <NotificationFeedSection pushToast={pushToast} />
 
       <ManageMissionsSection
         missions={dashboard.missions}

@@ -31,6 +31,9 @@ It supports:
 - Optional remote mode via API + Supabase.
 - Optional AI mission generator from plain task lists.
 - Parent success/error toasts for key dashboard actions.
+- Parent notification feed with unread badge on the kid board.
+- Themed in-app confirmation dialogs (no browser-native confirm popups).
+- Report-only CSP headers with optional Sentry error reporting.
 
 ## Quick Start
 
@@ -118,6 +121,8 @@ Set in `.env.local`:
 - `OPENAI_MODEL=gpt-4o-mini` (or another compatible model)
 - `GEMINI_API_KEY=<your key>`
 - `GEMINI_MODEL=gemini-2.0-flash-lite` (or another compatible model)
+- `SENTRY_DSN=<your DSN>` (optional)
+- `NEXT_PUBLIC_SENTRY_DSN=<your DSN>` (optional)
 
 If no key is set, the app falls back to deterministic non-AI mission generation.
 
@@ -133,3 +138,4 @@ If no key is set, the app falls back to deterministic non-AI mission generation.
   - `docs/architecture/state-machine.md`
 - Ops docs:
   - `docs/ops/daily-reset-runbook.md`
+  - CSP reports are accepted at `POST /api/internal/csp-report`

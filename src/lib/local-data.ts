@@ -20,6 +20,8 @@ import {
   MissionCompletionRequest,
   MissionUncompletionRequest,
   MissionWithState,
+  MarkNotificationsReadResult,
+  NotificationEvent,
   ParentDashboardData,
   Profile,
   Reward,
@@ -63,8 +65,10 @@ interface MetaRow {
   value: SquadState | ParentSettingsLocal | SquadGoal | null;
 }
 
+type NotificationEventLocal = NotificationEvent;
+
 const DB_NAME = "hero-habits-local";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const SESSION_KEY = "herohabits-parent-session-exp";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 8;
 
@@ -251,6 +255,16 @@ async function getDb() {
             db.createObjectStore("rewardClaims", { keyPath: "id" });
           }
         }
+
+        if (oldVersion < 3) {
+          if (!db.objectStoreNames.contains("notifications")) {
+            const notifications = db.createObjectStore("notifications", {
+              keyPath: "id",
+            });
+            notifications.createIndex("by-created-at", "createdAt");
+            notifications.createIndex("by-read-at", "readAt");
+          }
+        }
       },
     });
   }
@@ -292,7 +306,7 @@ async function ensureSeeded(db: Awaited<ReturnType<typeof openDB>>) {
       : await hashPin(publicEnv.parentPinPlain);
 
   const tx = db.transaction(
-    ["profiles", "missions", "meta", "rewards", "rewardClaims"],
+    ["profiles", "missions", "meta", "rewards", "rewardClaims", "notifications"],
     "readwrite",
   );
 
@@ -340,6 +354,22 @@ async function setMetaValue(
   value: MetaRow["value"],
 ) {
   await db.put("meta", { key, value } satisfies MetaRow);
+}
+
+async function pushNotificationEvent(
+  tx: { objectStore: (name: string) => { put: (value: unknown) => Promise<unknown> } },
+  event: Omit<NotificationEvent, "id" | "createdAt" | "readAt">,
+) {
+  const payload: NotificationEventLocal = {
+    id: randomId(),
+    profileId: event.profileId,
+    eventType: event.eventType,
+    title: event.title,
+    message: event.message,
+    createdAt: new Date().toISOString(),
+    readAt: null,
+  };
+  await tx.objectStore("notifications").put(payload);
 }
 
 async function ensureCurrentCycle(db: Awaited<ReturnType<typeof openDB>>): Promise<SquadState> {
@@ -509,7 +539,7 @@ export async function localCompleteMission(
   const db = await getDb();
   const squad = await ensureCurrentCycle(db);
   const tx = db.transaction(
-    ["missions", "profiles", "missionHistory", "meta"],
+    ["missions", "profiles", "missionHistory", "meta", "notifications"],
     "readwrite",
   );
 
@@ -629,6 +659,12 @@ export async function localCompleteMission(
     key: "squad",
     value: nextSquad,
   } satisfies MetaRow);
+  await pushNotificationEvent(tx, {
+    profileId: input.profileId,
+    eventType: "mission_complete",
+    title: "Mission Complete",
+    message: `${nextProfile.heroName} finished "${mission.title}" (+${mission.powerValue} power).`,
+  });
   await tx.done;
 
   return {
@@ -950,7 +986,7 @@ export async function localClaimReward(
 ): Promise<ClaimRewardResult> {
   const db = await getDb();
   const tx = db.transaction(
-    ["profiles", "rewards", "rewardClaims"],
+    ["profiles", "rewards", "rewardClaims", "notifications"],
     "readwrite",
   );
 
@@ -1001,6 +1037,12 @@ export async function localClaimReward(
 
   await tx.objectStore("profiles").put(nextProfile);
   await tx.objectStore("rewardClaims").put(claim);
+  await pushNotificationEvent(tx, {
+    profileId: input.profileId,
+    eventType: "reward_claimed",
+    title: "Reward Claimed",
+    message: `${profile.heroName} claimed "${reward.title}" (-${reward.pointCost} power).`,
+  });
   await tx.done;
 
   return {
@@ -1016,7 +1058,10 @@ export async function localReturnReward(
   input: ReturnRewardInput,
 ): Promise<ReturnRewardResult> {
   const db = await getDb();
-  const tx = db.transaction(["profiles", "rewardClaims"], "readwrite");
+  const tx = db.transaction(
+    ["profiles", "rewardClaims", "notifications", "rewards"],
+    "readwrite",
+  );
 
   const profileRow = (await tx.objectStore("profiles").get(
     input.profileId,
@@ -1044,8 +1089,15 @@ export async function localReturnReward(
     powerLevel: profile.powerLevel + claim.pointCost,
   };
 
+  const reward = (await tx.objectStore("rewards").get(claim.rewardId)) as Reward | undefined;
   await tx.objectStore("profiles").put(nextProfile);
   await tx.objectStore("rewardClaims").delete(claim.id);
+  await pushNotificationEvent(tx, {
+    profileId: input.profileId,
+    eventType: "reward_returned",
+    title: "Reward Returned",
+    message: `${profile.heroName} gave back "${reward?.title ?? "a reward"}" (+${claim.pointCost} power).`,
+  });
   await tx.done;
 
   return {
@@ -1138,6 +1190,53 @@ export async function localGetMissionHistory(
     .map(([date, missions]) => ({ date, missions }));
 }
 
+export async function localGetNotifications(limit = 100): Promise<NotificationEvent[]> {
+  assertParentSession();
+
+  const db = await getDb();
+  if (!db.objectStoreNames.contains("notifications")) {
+    return [];
+  }
+
+  const rows = (await db.getAll("notifications")) as NotificationEventLocal[];
+  return rows
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, Math.max(1, Math.min(500, limit)));
+}
+
+export async function localMarkNotificationsRead(): Promise<MarkNotificationsReadResult> {
+  assertParentSession();
+
+  const db = await getDb();
+  if (!db.objectStoreNames.contains("notifications")) {
+    return { markedCount: 0 };
+  }
+
+  const tx = db.transaction("notifications", "readwrite");
+  const rows = (await tx.store.getAll()) as NotificationEventLocal[];
+  const now = new Date().toISOString();
+  let markedCount = 0;
+
+  for (const row of rows) {
+    if (row.readAt) continue;
+    markedCount += 1;
+    await tx.store.put({ ...row, readAt: now });
+  }
+
+  await tx.done;
+  return { markedCount };
+}
+
+export async function localGetUnreadNotificationCount(): Promise<number> {
+  const db = await getDb();
+  if (!db.objectStoreNames.contains("notifications")) {
+    return 0;
+  }
+
+  const rows = (await db.getAll("notifications")) as NotificationEventLocal[];
+  return rows.filter((row) => !row.readAt).length;
+}
+
 export async function localCreateProfile(input: CreateProfileInput): Promise<Profile> {
   assertParentSession();
 
@@ -1227,4 +1326,26 @@ export async function localChangeParentPin(newPin: string): Promise<void> {
     updatedAt: new Date().toISOString(),
   };
   await setMetaValue(db, "parent_settings", settings);
+}
+
+export async function resetLocalDataForTests(): Promise<void> {
+  if (typeof indexedDB === "undefined") {
+    return;
+  }
+
+  if (dbPromise) {
+    const db = await dbPromise;
+    db.close();
+  }
+  dbPromise = null;
+  seeded = false;
+  clearParentSession();
+
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+    request.onblocked = () => resolve();
+    setTimeout(() => resolve(), 50);
+  });
 }

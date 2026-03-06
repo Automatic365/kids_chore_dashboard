@@ -7,6 +7,7 @@ import {
   deleteReward as deleteRewardRequest,
   updateReward as updateRewardRequest,
 } from "@/lib/client-api";
+import { useHeroDialog } from "@/hooks/use-hero-dialog";
 import { Reward } from "@/lib/types/domain";
 
 interface RewardManagerSectionProps {
@@ -33,6 +34,7 @@ export function RewardManagerSection({
   onRefresh,
   pushToast,
 }: RewardManagerSectionProps) {
+  const { confirm, dialogNode } = useHeroDialog();
   const [drafts, setDrafts] = useState<Record<string, RewardDraft>>({});
   const [savingById, setSavingById] = useState<Record<string, boolean>>({});
   const [deletingById, setDeletingById] = useState<Record<string, boolean>>({});
@@ -129,7 +131,11 @@ export function RewardManagerSection({
   }
 
   async function handleDelete(reward: RewardDraft) {
-    const ok = window.confirm(`Delete reward "${reward.title}"?`);
+    const ok = await confirm({
+      title: "Delete Reward",
+      description: `Delete reward "${reward.title}"?`,
+      confirmLabel: "Delete",
+    });
     if (!ok) return;
 
     setDeletingById((current) => ({ ...current, [reward.id]: true }));
@@ -283,6 +289,7 @@ export function RewardManagerSection({
           {creating ? "Creating…" : "Create Reward"}
         </button>
       </form>
+      {dialogNode}
     </section>
   );
 }

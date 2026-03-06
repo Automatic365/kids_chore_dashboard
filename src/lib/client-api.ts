@@ -9,7 +9,9 @@ import {
   localDeleteMission,
   localDeleteProfile,
   localDeleteReward,
+  localGetNotifications,
   localGetRewardClaims,
+  localGetUnreadNotificationCount,
   localGetMissionHistory,
   localGetMissions,
   localGetParentDashboard,
@@ -21,6 +23,7 @@ import {
   localReturnReward,
   localRestoreMission,
   localSetSquadGoal,
+  localMarkNotificationsRead,
   localUncompleteMission,
   localUpdateMission,
   localUpdateProfile,
@@ -35,10 +38,12 @@ import {
   CreateMissionInput,
   CreateProfileInput,
   CreateRewardInput,
+  MarkNotificationsReadResult,
   Mission,
   MissionHistoryEntry,
   MissionUncompletionRequest,
   MissionWithState,
+  NotificationEvent,
   ParentDashboardData,
   Profile,
   Reward,
@@ -533,6 +538,56 @@ export async function fetchMissionHistory(
       return data.history;
     },
     () => localGetMissionHistory(profileId, days),
+  );
+}
+
+export async function fetchNotifications(limit = 100): Promise<NotificationEvent[]> {
+  return withFallback(
+    async () => {
+      const response = await fetch(
+        `/api/parent/notifications?limit=${Math.max(1, Math.floor(limit))}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        throw new Error(response.status === 401 ? "UNAUTHORIZED" : "Failed to load notifications");
+      }
+      const data = (await response.json()) as { notifications: NotificationEvent[] };
+      return data.notifications;
+    },
+    () => localGetNotifications(limit),
+  );
+}
+
+export async function markNotificationsRead(): Promise<MarkNotificationsReadResult> {
+  return withFallback(
+    async () => {
+      const response = await fetch("/api/parent/notifications/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) {
+        throw new Error(response.status === 401 ? "UNAUTHORIZED" : "Failed to mark notifications read");
+      }
+      const data = (await response.json()) as { result: MarkNotificationsReadResult };
+      return data.result;
+    },
+    () => localMarkNotificationsRead(),
+  );
+}
+
+export async function fetchUnreadNotificationCount(): Promise<number> {
+  return withFallback(
+    async () => {
+      const response = await fetch("/api/public/notification-count", {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load notification count");
+      }
+      const data = (await response.json()) as { unreadCount: number };
+      return data.unreadCount;
+    },
+    () => localGetUnreadNotificationCount(),
   );
 }
 

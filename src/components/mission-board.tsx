@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 import { HistorySection } from "@/components/board/history-section";
+import { LevelUpSection } from "@/components/board/level-up-section";
 import { MissionsSection } from "@/components/board/missions-section";
 import { ParentPinGate } from "@/components/board/parent-pin-gate";
 import { RewardsSection } from "@/components/board/rewards-section";
@@ -44,10 +45,15 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
     showSquadWin,
     showTrophyCase,
     showHistory,
+    unreadNotificationCount,
     heroLevel,
     personalProgress,
+    dialogNode,
+    showLevelUp,
+    levelUpName,
     setShowPinGate,
     dismissSquadWin,
+    dismissLevelUp,
     completeMissionAction,
     undoMissionAction,
     claimRewardAction,
@@ -78,8 +84,24 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
 
   if (loading) {
     return (
-      <main className="mx-auto min-h-screen max-w-7xl p-6 text-white">
-        <p className="text-xl font-bold uppercase">Loading Mission Control...</p>
+      <main className="mx-auto min-h-screen w-full max-w-7xl px-4 py-4 text-white sm:px-6">
+        <section className="comic-card mb-4 p-4">
+          <div className="h-5 w-40 animate-pulse rounded bg-white/20" />
+          <div className="mt-3 h-3 w-full animate-pulse rounded bg-white/15" />
+          <div className="mt-2 h-3 w-4/5 animate-pulse rounded bg-white/10" />
+        </section>
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <article
+              key={`mission-skeleton-${index}`}
+              className="comic-card min-h-[190px] animate-pulse p-4"
+            >
+              <div className="h-24 w-full rounded bg-white/10" />
+              <div className="mt-3 h-4 w-3/4 rounded bg-white/15" />
+              <div className="mt-2 h-3 w-full rounded bg-white/10" />
+            </article>
+          ))}
+        </section>
       </main>
     );
   }
@@ -104,6 +126,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
         squad={squad}
         heroLevel={heroLevel}
         personalProgress={personalProgress}
+        unreadNotificationCount={unreadNotificationCount}
         isPressingParentSpot={isPressingParentSpot}
         onLongPressStart={startLongPress}
         onLongPressEnd={stopLongPress}
@@ -154,6 +177,15 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
           onSubmit={handleParentLogin}
         />
       ) : null}
+
+      <LevelUpSection
+        open={showLevelUp}
+        heroName={profile.heroName}
+        levelName={levelUpName ?? heroLevel?.name ?? "Hero"}
+        onDismiss={dismissLevelUp}
+      />
+
+      {dialogNode}
     </main>
   );
 }

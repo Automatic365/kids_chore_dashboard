@@ -7,6 +7,7 @@ import {
   uncompleteMission as uncompleteMissionRequest,
   updateMission as updateMissionRequest,
 } from "@/lib/client-api";
+import { useHeroDialog } from "@/hooks/use-hero-dialog";
 import { MissionWithState } from "@/lib/types/domain";
 import { ImagePicker } from "@/components/parent/image-picker";
 
@@ -49,6 +50,7 @@ export function ManageMissionsSection({
   onRefresh,
   pushToast,
 }: ManageMissionsSectionProps) {
+  const { confirm, dialogNode } = useHeroDialog();
   const [drafts, setDrafts] = useState<Record<string, MissionDraft>>({});
   const [savingById, setSavingById] = useState<Record<string, boolean>>({});
   const [deletingById, setDeletingById] = useState<Record<string, boolean>>({});
@@ -148,7 +150,11 @@ export function ManageMissionsSection({
 
   const handleDelete = useCallback(
     async (id: string, title: string) => {
-      const ok = window.confirm(`Move "${title}" to trash? You can restore it later.`);
+      const ok = await confirm({
+        title: "Move Mission To Trash",
+        description: `Move "${title}" to trash? You can restore it later.`,
+        confirmLabel: "Move To Trash",
+      });
       if (!ok) return;
 
       const pending = autosaveTimers.current[id];
@@ -168,16 +174,18 @@ export function ManageMissionsSection({
         setDeletingById((c) => ({ ...c, [id]: false }));
       }
     },
-    [onRefresh, pushToast],
+    [onRefresh, pushToast, confirm],
   );
 
   const handleForceUndo = useCallback(
     async (mission: MissionDraft) => {
       if (!mission.completedToday) return;
 
-      const ok = window.confirm(
-        `Force undo "${mission.title}"? This will subtract ${mission.powerValue} power even if points were already spent.`,
-      );
+      const ok = await confirm({
+        title: "Force Undo Mission",
+        description: `Force undo "${mission.title}"? This will subtract ${mission.powerValue} power even if points were already spent.`,
+        confirmLabel: "Force Undo",
+      });
       if (!ok) return;
 
       setUndoingById((c) => ({ ...c, [mission.id]: true }));
@@ -201,7 +209,7 @@ export function ManageMissionsSection({
         setUndoingById((c) => ({ ...c, [mission.id]: false }));
       }
     },
-    [onRefresh, pushToast],
+    [onRefresh, pushToast, confirm],
   );
 
   function update(next: MissionDraft) {
@@ -334,6 +342,7 @@ export function ManageMissionsSection({
           );
         })}
       </div>
+      {dialogNode}
     </section>
   );
 }

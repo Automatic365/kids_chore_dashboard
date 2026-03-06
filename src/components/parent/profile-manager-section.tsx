@@ -8,6 +8,7 @@ import {
   generateAvatar,
   updateProfile as updateProfileRequest,
 } from "@/lib/client-api";
+import { useHeroDialog } from "@/hooks/use-hero-dialog";
 import { Profile, UiMode } from "@/lib/types/domain";
 import { AvatarDisplay } from "@/components/avatar-display";
 import { ImagePicker } from "@/components/parent/image-picker";
@@ -29,6 +30,7 @@ export function ProfileManagerSection({
   onRefresh,
   pushToast,
 }: ProfileManagerSectionProps) {
+  const { confirm, dialogNode } = useHeroDialog();
   const [drafts, setDrafts] = useState<Record<string, ProfileDraft>>({});
   const [savingById, setSavingById] = useState<Record<string, boolean>>({});
   const [deletingById, setDeletingById] = useState<Record<string, boolean>>({});
@@ -93,9 +95,11 @@ export function ProfileManagerSection({
   }
 
   async function handleDelete(profile: Profile) {
-    const confirmed = window.confirm(
-      `Remove "${profile.heroName}"? This permanently deletes the hero and all their missions.`,
-    );
+    const confirmed = await confirm({
+      title: "Delete Hero",
+      description: `Remove "${profile.heroName}"? This permanently deletes the hero and all their missions.`,
+      confirmLabel: "Delete Hero",
+    });
     if (!confirmed) return;
 
     setDeletingById((current) => ({ ...current, [profile.id]: true }));
@@ -267,6 +271,7 @@ export function ProfileManagerSection({
           {creating ? "Adding..." : "Add Hero"}
         </button>
       </form>
+      {dialogNode}
     </section>
   );
 }

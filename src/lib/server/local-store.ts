@@ -19,6 +19,9 @@ import {
   MissionCompletionRequest,
   MissionUncompletionRequest,
   MissionWithState,
+  MarkNotificationsReadResult,
+  NotificationEvent,
+  NotificationEventType,
   ParentDashboardData,
   Profile,
   Reward,
@@ -54,6 +57,7 @@ interface LocalState {
   missionHistory: MissionHistoryRow[];
   rewards: Reward[];
   rewardClaims: RewardClaimRow[];
+  notifications: NotificationEvent[];
   squad: SquadState;
   parentPinHash: string;
 }
@@ -186,6 +190,7 @@ function initialState(): LocalState {
     missionHistory: [],
     rewards: defaultRewards(),
     rewardClaims: [],
+    notifications: [],
     squad: {
       squadPowerCurrent: 0,
       squadPowerMax: 100,
@@ -209,6 +214,7 @@ function normalizeLoadedState(state: LocalState): LocalState {
         ? state.rewards
         : defaultRewards(),
     rewardClaims: state.rewardClaims ?? [],
+    notifications: state.notifications ?? [],
     squad: {
       ...state.squad,
       squadGoal: state.squad?.squadGoal ?? null,
@@ -249,6 +255,23 @@ class LocalStore {
       .filter((row) => row.completedOnLocalDate === cycleDate)
       .map((row) => row.missionId);
     return new Set(completedMissionIds);
+  }
+
+  private pushNotification(
+    profileId: string,
+    eventType: NotificationEventType,
+    title: string,
+    message: string,
+  ): void {
+    this.state.notifications.push({
+      id: randomUUID(),
+      profileId,
+      eventType,
+      title,
+      message,
+      createdAt: new Date().toISOString(),
+      readAt: null,
+    });
   }
 
   getProfiles(): Profile[] {
@@ -371,6 +394,12 @@ class LocalStore {
       this.state.squad.squadPowerCurrent + mission.powerValue,
       0,
       this.state.squad.squadPowerMax,
+    );
+    this.pushNotification(
+      input.profileId,
+      "mission_complete",
+      "Mission Complete",
+      `${profile.heroName} finished "${mission.title}" (+${mission.powerValue} power).`,
     );
 
     this.saveToDisk();
@@ -615,6 +644,12 @@ class LocalStore {
         claimedAt,
       }),
     });
+    this.pushNotification(
+      input.profileId,
+      "reward_claimed",
+      "Reward Claimed",
+      `${profile.heroName} claimed "${reward.title}" (-${reward.pointCost} power).`,
+    );
     this.saveToDisk();
 
     return {
@@ -647,6 +682,14 @@ class LocalStore {
     const claim = this.state.rewardClaims[claimIndex];
     this.state.rewardClaims.splice(claimIndex, 1);
     profile.powerLevel += claim.pointCost;
+    const rewardTitle =
+      this.state.rewards.find((item) => item.id === claim.rewardId)?.title ?? "a reward";
+    this.pushNotification(
+      input.profileId,
+      "reward_returned",
+      "Reward Returned",
+      `${profile.heroName} gave back "${rewardTitle}" (+${claim.pointCost} power).`,
+    );
     this.saveToDisk();
 
     return {
@@ -749,6 +792,33 @@ class LocalStore {
     return Array.from(grouped.entries())
       .sort((a, b) => (a[0] < b[0] ? 1 : -1))
       .map(([date, missions]) => ({ date, missions }));
+  }
+
+  getNotifications(limit = 100): NotificationEvent[] {
+    return [...this.state.notifications]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, Math.max(1, Math.min(500, limit)));
+  }
+
+  markNotificationsRead(): MarkNotificationsReadResult {
+    const now = new Date().toISOString();
+    let markedCount = 0;
+
+    for (const item of this.state.notifications) {
+      if (item.readAt) continue;
+      item.readAt = now;
+      markedCount += 1;
+    }
+
+    if (markedCount > 0) {
+      this.saveToDisk();
+    }
+
+    return { markedCount };
+  }
+
+  getUnreadNotificationCount(): number {
+    return this.state.notifications.filter((item) => item.readAt === null).length;
   }
 
   createProfile(input: CreateProfileInput): Profile {

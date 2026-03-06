@@ -18,6 +18,8 @@ import {
   MissionCompletionRequest,
   MissionUncompletionRequest,
   MissionWithState,
+  MarkNotificationsReadResult,
+  NotificationEvent,
   ParentDashboardData,
   Profile,
   Reward,
@@ -53,6 +55,9 @@ export interface Repository {
   getRewardClaims(profileId: string): Promise<RewardClaimEntry[]>;
   setSquadGoal(goal: SquadGoal | null): Promise<SquadState>;
   getMissionHistory(profileId: string, days: number): Promise<MissionHistoryEntry[]>;
+  getNotifications(limit?: number): Promise<NotificationEvent[]>;
+  markNotificationsRead(): Promise<MarkNotificationsReadResult>;
+  getUnreadNotificationCount(): Promise<number>;
   verifyParentPin(pin: string): Promise<boolean>;
   changeParentPin(newPin: string): Promise<void>;
   getParentDashboard(): Promise<ParentDashboardData>;
@@ -158,6 +163,16 @@ type RewardClaimSupabaseRow = {
   image_url: string | null;
 };
 
+type NotificationRow = {
+  id: string;
+  profile_id: string;
+  event_type: string;
+  title: string;
+  message: string;
+  created_at: string;
+  read_at: string | null;
+};
+
 function mapReward(row: RewardRow): Reward {
   return {
     id: row.id,
@@ -184,6 +199,21 @@ function mapSquadRow(row: SquadRow): SquadState {
             rewardDescription: row.squad_goal_reward_description,
           }
         : null,
+  };
+}
+
+function mapNotification(row: NotificationRow): NotificationEvent {
+  return {
+    id: row.id,
+    profileId: row.profile_id,
+    eventType:
+      row.event_type === "reward_claimed" || row.event_type === "reward_returned"
+        ? row.event_type
+        : "mission_complete",
+    title: row.title,
+    message: row.message,
+    createdAt: row.created_at,
+    readAt: row.read_at,
   };
 }
 
@@ -268,6 +298,18 @@ class LocalRepository implements Repository {
 
   async getMissionHistory(profileId: string, days: number): Promise<MissionHistoryEntry[]> {
     return this.store.getMissionHistory(profileId, days);
+  }
+
+  async getNotifications(limit = 100): Promise<NotificationEvent[]> {
+    return this.store.getNotifications(limit);
+  }
+
+  async markNotificationsRead(): Promise<MarkNotificationsReadResult> {
+    return this.store.markNotificationsRead();
+  }
+
+  async getUnreadNotificationCount(): Promise<number> {
+    return this.store.getUnreadNotificationCount();
   }
 
   async verifyParentPin(pin: string): Promise<boolean> {
@@ -422,69 +464,50 @@ class SupabaseRepository implements Repository {
     const admin = getSupabaseAdmin();
     if (!admin) throw new Error("Supabase is not configured");
 
-    const { data: rewardData, error: rewardError } = await admin
-      .from("rewards")
-      .select("id, title, description, point_cost, is_active, sort_order")
-      .eq("id", input.rewardId)
-      .maybeSingle();
-    if (rewardError) throw new Error(rewardError.message);
-    if (!rewardData) throw new Error("Reward unavailable");
+    const [{ data: profileRow }, { data: rewardRow }] = await Promise.all([
+      admin
+        .from("profiles")
+        .select("hero_name")
+        .eq("id", input.profileId)
+        .maybeSingle(),
+      admin
+        .from("rewards")
+        .select("title")
+        .eq("id", input.rewardId)
+        .maybeSingle(),
+    ]);
 
-    const reward = mapReward(rewardData as RewardRow);
-    if (!reward.isActive) {
+    const claimedAt = new Date().toISOString();
+    const imageUrl = generateRewardStickerDataUrl({
+      rewardTitle: (rewardRow as { title?: string } | null)?.title ?? "Reward",
+      heroName: (profileRow as { hero_name?: string } | null)?.hero_name ?? "Hero",
+      claimedAt,
+    });
+
+    const { data, error } = await admin.rpc("claim_reward_v1", {
+      p_profile_id: input.profileId,
+      p_reward_id: input.rewardId,
+      p_image_url: imageUrl,
+    });
+    if (error) throw new Error(error.message);
+
+    const result = (data ?? {}) as {
+      claimed?: boolean;
+      insufficient_points?: boolean;
+      new_power_level?: number;
+      reward?: RewardRow;
+    };
+
+    if (!result.reward) {
       throw new Error("Reward unavailable");
     }
 
-    const { data: profileData, error: profileError } = await admin
-      .from("profiles")
-      .select("id, hero_name, power_level")
-      .eq("id", input.profileId)
-      .maybeSingle();
-    if (profileError) throw new Error(profileError.message);
-    if (!profileData) throw new Error("Profile not found");
-
-    const powerLevel = Number(
-      (profileData as { power_level?: number }).power_level ?? 0,
-    );
-    if (powerLevel < reward.pointCost) {
-      return {
-        claimed: false,
-        insufficientPoints: true,
-        alreadyClaimed: false,
-        newPowerLevel: powerLevel,
-        reward,
-      };
-    }
-
-    const nextPowerLevel = Math.max(0, powerLevel - reward.pointCost);
-    const claimedAt = new Date().toISOString();
-    const heroName = (profileData as { hero_name?: string }).hero_name ?? "Hero";
-
-    const { error: updateProfileError } = await admin
-      .from("profiles")
-      .update({ power_level: nextPowerLevel })
-      .eq("id", input.profileId);
-    if (updateProfileError) throw new Error(updateProfileError.message);
-
-    const { error: insertClaimError } = await admin.from("reward_claims").insert({
-      profile_id: input.profileId,
-      reward_id: input.rewardId,
-      point_cost: reward.pointCost,
-      claimed_at: claimedAt,
-      image_url: generateRewardStickerDataUrl({
-        rewardTitle: reward.title,
-        heroName,
-        claimedAt,
-      }),
-    });
-    if (insertClaimError) throw new Error(insertClaimError.message);
-
     return {
-      claimed: true,
-      insufficientPoints: false,
+      claimed: Boolean(result.claimed),
+      insufficientPoints: Boolean(result.insufficient_points),
       alreadyClaimed: false,
-      newPowerLevel: nextPowerLevel,
-      reward,
+      newPowerLevel: Number(result.new_power_level ?? 0),
+      reward: mapReward(result.reward),
     };
   }
 
@@ -494,7 +517,7 @@ class SupabaseRepository implements Repository {
 
     const { data: claimData, error: claimError } = await admin
       .from("reward_claims")
-      .select("id, profile_id, point_cost")
+      .select("id, profile_id, reward_id, point_cost")
       .eq("id", input.rewardClaimId)
       .eq("profile_id", input.profileId)
       .maybeSingle();
@@ -542,6 +565,26 @@ class SupabaseRepository implements Repository {
       .eq("id", input.rewardClaimId)
       .eq("profile_id", input.profileId);
     if (deleteError) throw new Error(deleteError.message);
+
+    const [{ data: rewardRow }, { data: profileRow }] = await Promise.all([
+      admin
+        .from("rewards")
+        .select("title")
+        .eq("id", (claimData as { reward_id?: string }).reward_id ?? "")
+        .maybeSingle(),
+      admin
+        .from("profiles")
+        .select("hero_name")
+        .eq("id", input.profileId)
+        .maybeSingle(),
+    ]);
+
+    await admin.from("notifications").insert({
+      profile_id: input.profileId,
+      event_type: "reward_returned",
+      title: "Reward Returned",
+      message: `${(profileRow as { hero_name?: string } | null)?.hero_name ?? "Hero"} gave back "${(rewardRow as { title?: string } | null)?.title ?? "a reward"}" (+${restoredPoints} power).`,
+    });
 
     return {
       returned: true,
@@ -676,6 +719,56 @@ class SupabaseRepository implements Repository {
     return Array.from(grouped.entries()).map(([date, missions]) => ({ date, missions }));
   }
 
+  async getNotifications(limit = 100): Promise<NotificationEvent[]> {
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { data, error } = await admin
+      .from("notifications")
+      .select("id, profile_id, event_type, title, message, created_at, read_at")
+      .order("created_at", { ascending: false })
+      .limit(Math.max(1, Math.min(500, limit)));
+
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as NotificationRow[]).map(mapNotification);
+  }
+
+  async markNotificationsRead(): Promise<MarkNotificationsReadResult> {
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { data: unreadRows, error: readError } = await admin
+      .from("notifications")
+      .select("id")
+      .is("read_at", null);
+    if (readError) throw new Error(readError.message);
+
+    const ids = ((unreadRows ?? []) as Array<{ id: string }>).map((row) => row.id);
+    if (ids.length === 0) {
+      return { markedCount: 0 };
+    }
+
+    const { error } = await admin
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .in("id", ids);
+    if (error) throw new Error(error.message);
+
+    return { markedCount: ids.length };
+  }
+
+  async getUnreadNotificationCount(): Promise<number> {
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const { count, error } = await admin
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .is("read_at", null);
+    if (error) throw new Error(error.message);
+    return Number(count ?? 0);
+  }
+
   async getMissions(profileId?: string): Promise<MissionWithState[]> {
     const admin = getSupabaseAdmin();
     if (!admin) throw new Error("Supabase is not configured");
@@ -776,13 +869,41 @@ class SupabaseRepository implements Repository {
       squad_power_max?: number;
     };
 
-    return {
+    const payload: CompletionResult = {
       awarded: Boolean(result.awarded),
       alreadyCompleted: Boolean(result.already_completed),
       profilePowerLevel: Number(result.profile_power_level ?? 0),
       squadPowerCurrent: Number(result.squad_power_current ?? 0),
       squadPowerMax: Number(result.squad_power_max ?? 100),
     };
+
+    if (payload.awarded) {
+      const [{ data: missionRow }, { data: profileRow }] = await Promise.all([
+        admin
+          .from("missions")
+          .select("title, power_value")
+          .eq("id", input.missionId)
+          .maybeSingle(),
+        admin
+          .from("profiles")
+          .select("hero_name")
+          .eq("id", input.profileId)
+          .maybeSingle(),
+      ]);
+
+      const mission = missionRow as { title?: string; power_value?: number } | null;
+      const profile = profileRow as { hero_name?: string } | null;
+      await admin.from("notifications").insert({
+        profile_id: input.profileId,
+        event_type: "mission_complete",
+        title: "Mission Complete",
+        message: `${profile?.hero_name ?? "Hero"} finished "${mission?.title ?? "a mission"}" (+${Number(
+          mission?.power_value ?? 0,
+        )} power).`,
+      });
+    }
+
+    return payload;
   }
 
   async uncompleteMission(

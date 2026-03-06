@@ -1,5 +1,6 @@
 import { toLocalDateString } from "@/lib/date";
 import { env } from "@/lib/env";
+import { reportError } from "@/lib/monitoring";
 import { err, getRequestId, ok } from "@/lib/server/api";
 import { getRepository } from "@/lib/server/repository";
 
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
 
     return ok({ cycleDate, squad }, requestId);
   } catch (error) {
+    reportError(error, { route: "internal_daily_reset" });
     const message = error instanceof Error ? error.message : "Unknown error";
     return err(500, "RESET_FAILED", message, requestId);
   }

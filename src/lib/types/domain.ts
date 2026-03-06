@@ -1,5 +1,9 @@
 export type UiMode = "text" | "picture";
 export type AiProvider = "openai" | "gemini";
+export type NotificationEventType =
+  | "mission_complete"
+  | "reward_claimed"
+  | "reward_returned";
 
 export interface Profile {
   id: string;
@@ -176,6 +180,20 @@ export interface MissionHistoryEntry {
     title: string;
     powerAwarded: number;
   }>;
+}
+
+export interface NotificationEvent {
+  id: string;
+  profileId: string;
+  eventType: NotificationEventType;
+  title: string;
+  message: string;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface MarkNotificationsReadResult {
+  markedCount: number;
 }
 
 export interface CreateProfileInput {

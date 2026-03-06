@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   claimReward,
   completeMission,
   fetchMissionHistory,
   fetchMissions,
+  fetchUnreadNotificationCount,
   fetchProfiles,
   fetchRewardClaims,
   fetchRewards,
@@ -15,7 +16,9 @@ import {
   returnReward,
   uncompleteMission,
 } from "@/lib/client-api";
+import { didHeroLevelIncrease, shouldTriggerSquadGoalWin } from "@/lib/board-rules";
 import { getHeroLevel } from "@/lib/hero-levels";
+import { reportError } from "@/lib/monitoring";
 import {
   enqueueCompletion,
   flushCompletionQueue,
@@ -23,6 +26,7 @@ import {
   removeQueuedCompletionsForMission,
 } from "@/lib/offline/queue";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useHeroDialog } from "@/hooks/use-hero-dialog";
 import {
   MissionHistoryEntry,
   MissionWithState,
@@ -71,10 +75,15 @@ interface UseMissionBoardControllerResult {
   showSquadWin: boolean;
   showTrophyCase: boolean;
   showHistory: boolean;
+  unreadNotificationCount: number;
   heroLevel: ReturnType<typeof getHeroLevel> | null;
   personalProgress: number;
+  dialogNode: ReactNode;
+  showLevelUp: boolean;
+  levelUpName: string | null;
   setShowPinGate: (show: boolean) => void;
   dismissSquadWin: () => void;
+  dismissLevelUp: () => void;
   completeMissionAction: (mission: MissionWithState) => Promise<void>;
   undoMissionAction: (mission: MissionWithState) => Promise<void>;
   claimRewardAction: (reward: Reward) => Promise<void>;
@@ -107,6 +116,10 @@ export function useMissionBoardController(
   const [isPressingParentSpot, setIsPressingParentSpot] = useState(false);
   const [returningClaimById, setReturningClaimById] = useState<Record<string, boolean>>({});
   const [showSquadWin, setShowSquadWin] = useState(false);
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [levelUpName, setLevelUpName] = useState<string | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const { confirm, dialogNode } = useHeroDialog();
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const claimsLoadedRef = useRef(false);
@@ -128,6 +141,18 @@ export function useMissionBoardController(
     () => (profile ? getHeroLevel(profile.powerLevel) : null),
     [profile],
   );
+
+  const applyProfilePowerLevel = useCallback((nextPowerLevel: number, previousPowerLevel?: number) => {
+    setProfile((current) => {
+      if (!current) return current;
+      const baselinePowerLevel = previousPowerLevel ?? current.powerLevel;
+      if (didHeroLevelIncrease(baselinePowerLevel, nextPowerLevel)) {
+        setLevelUpName(getHeroLevel(nextPowerLevel).name);
+        setShowLevelUp(true);
+      }
+      return { ...current, powerLevel: nextPowerLevel };
+    });
+  }, []);
 
   const loadHistory = useCallback(
     async (force = false) => {
@@ -172,11 +197,12 @@ export function useMissionBoardController(
   const loadBoard = useCallback(async () => {
     try {
       setLoading(true);
-      const [profiles, missionRows, squadState, rewardRows] = await Promise.all([
+      const [profiles, missionRows, squadState, rewardRows, unreadCount] = await Promise.all([
         fetchProfiles(),
         fetchMissions(profileId),
         fetchSquadState(),
         fetchRewards(),
+        fetchUnreadNotificationCount(),
       ]);
 
       const activeProfile = profiles.find((item) => item.id === profileId) ?? null;
@@ -184,6 +210,7 @@ export function useMissionBoardController(
       setMissions(missionRows);
       setSquad(squadState);
       setRewards(rewardRows);
+      setUnreadNotificationCount(unreadCount);
       setError(null);
 
       if (claimsLoadedRef.current) {
@@ -193,6 +220,7 @@ export function useMissionBoardController(
         void loadHistory(true);
       }
     } catch (err) {
+      reportError(err, { surface: "mission_board_load" });
       const message = err instanceof Error ? err.message : "Failed to load board";
       setError(message);
     } finally {
@@ -228,6 +256,8 @@ export function useMissionBoardController(
     setShowHistory(false);
     setClaimsLoading(false);
     setHistoryLoading(false);
+    setShowLevelUp(false);
+    setLevelUpName(null);
   }, [profileId]);
 
   useEffect(() => {
@@ -323,6 +353,9 @@ export function useMissionBoardController(
       );
 
       playSuccessSound();
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate([30, 20, 60]);
+      }
       setEffectText(profile.uiMode === "picture" ? "KAPOW!" : "MISSION COMPLETE!");
       window.setTimeout(() => setEffectText(null), 900);
 
@@ -338,9 +371,7 @@ export function useMissionBoardController(
 
       if (!remoteEnabled) {
         const result = await completeMission(payload);
-        setProfile((current) =>
-          current ? { ...current, powerLevel: result.profilePowerLevel } : current,
-        );
+        applyProfilePowerLevel(result.profilePowerLevel, profile.powerLevel);
         setSquad((current) =>
           current
             ? {
@@ -350,7 +381,10 @@ export function useMissionBoardController(
               }
             : current,
         );
-        if (result.squadPowerCurrent >= result.squadPowerMax) {
+        if (result.awarded) {
+          setUnreadNotificationCount((current) => current + 1);
+        }
+        if (shouldTriggerSquadGoalWin(squad, result.squadPowerCurrent)) {
           setShowSquadWin(true);
         }
         if (historyLoadedRef.current) {
@@ -366,9 +400,7 @@ export function useMissionBoardController(
 
       try {
         const result = await completeMission(payload);
-        setProfile((current) =>
-          current ? { ...current, powerLevel: result.profilePowerLevel } : current,
-        );
+        applyProfilePowerLevel(result.profilePowerLevel, profile.powerLevel);
         setSquad((current) =>
           current
             ? {
@@ -378,17 +410,21 @@ export function useMissionBoardController(
               }
             : current,
         );
-        if (result.squadPowerCurrent >= result.squadPowerMax) {
+        if (result.awarded) {
+          setUnreadNotificationCount((current) => current + 1);
+        }
+        if (shouldTriggerSquadGoalWin(squad, result.squadPowerCurrent)) {
           setShowSquadWin(true);
         }
         if (historyLoadedRef.current) {
           void loadHistory(true);
         }
-      } catch {
+      } catch (error) {
+        reportError(error, { surface: "mission_complete" });
         await enqueueCompletion({ id: makeId(), ...payload });
       }
     },
-    [profile, profileId, squad, remoteEnabled, loadHistory],
+    [profile, profileId, squad, remoteEnabled, loadHistory, applyProfilePowerLevel],
   );
 
   const undoMissionAction = useCallback(
@@ -445,9 +481,12 @@ export function useMissionBoardController(
                 claimsToReturn.length > 3
                   ? `${names}, +${claimsToReturn.length - 3} more`
                   : names;
-              const ok = window.confirm(
-                `Undo is locked because points were spent.\nReturn ${claimsToReturn.length} reward(s) (${recovered} power) to undo this mission?\n${label}`,
-              );
+              const ok = await confirm({
+                title: "Undo Is Locked",
+                description: `Return ${claimsToReturn.length} reward(s) (${recovered} power) to undo this mission?\n${label}`,
+                confirmLabel: "Return Rewards",
+                cancelLabel: "Keep Locked",
+              });
               if (ok) {
                 for (const claim of claimsToReturn) {
                   await returnReward({
@@ -508,11 +547,12 @@ export function useMissionBoardController(
         if (historyLoadedRef.current) {
           void loadHistory(true);
         }
-      } catch {
+      } catch (error) {
+        reportError(error, { surface: "mission_undo" });
         await loadBoard();
       }
     },
-    [loadBoard, profile, profileId, rewardClaims, squad, remoteEnabled, loadHistory],
+    [loadBoard, profile, profileId, rewardClaims, squad, remoteEnabled, loadHistory, confirm],
   );
 
   const claimRewardAction = useCallback(
@@ -524,9 +564,12 @@ export function useMissionBoardController(
         return;
       }
 
-      const ok = window.confirm(
-        `Claim "${reward.title}" for ${reward.pointCost} power points?`,
-      );
+      const ok = await confirm({
+        title: "Claim Reward",
+        description: `Claim "${reward.title}" for ${reward.pointCost} power points?`,
+        confirmLabel: "Claim",
+        cancelLabel: "Cancel",
+      });
       if (!ok) {
         return;
       }
@@ -547,18 +590,22 @@ export function useMissionBoardController(
         if (claimsLoadedRef.current) {
           await loadRewardClaims(true);
         }
-      } catch {
+      } catch (error) {
+        reportError(error, { surface: "reward_claim" });
         await loadBoard();
       }
     },
-    [loadBoard, profile, profileId, loadRewardClaims],
+    [loadBoard, profile, profileId, loadRewardClaims, confirm],
   );
 
   const returnClaimAction = useCallback(
     async (claim: RewardClaimEntry) => {
-      const ok = window.confirm(
-        `Give back "${claim.title}" and restore ${claim.pointCost} power?`,
-      );
+      const ok = await confirm({
+        title: "Give Back Reward",
+        description: `Give back "${claim.title}" and restore ${claim.pointCost} power?`,
+        confirmLabel: "Give Back",
+        cancelLabel: "Cancel",
+      });
       if (!ok) {
         return;
       }
@@ -580,13 +627,14 @@ export function useMissionBoardController(
         if (claimsLoadedRef.current) {
           await loadRewardClaims(true);
         }
-      } catch {
+      } catch (error) {
+        reportError(error, { surface: "reward_return" });
         await loadBoard();
       } finally {
         setReturningClaimById((current) => ({ ...current, [claim.id]: false }));
       }
     },
-    [loadBoard, profileId, loadRewardClaims],
+    [loadBoard, profileId, loadRewardClaims, confirm],
   );
 
   const startLongPress = useCallback(() => {
@@ -643,10 +691,18 @@ export function useMissionBoardController(
     showSquadWin,
     showTrophyCase,
     showHistory,
+    unreadNotificationCount,
     heroLevel,
     personalProgress,
+    dialogNode,
+    showLevelUp,
+    levelUpName,
     setShowPinGate,
     dismissSquadWin: () => setShowSquadWin(false),
+    dismissLevelUp: () => {
+      setShowLevelUp(false);
+      setLevelUpName(null);
+    },
     completeMissionAction,
     undoMissionAction,
     claimRewardAction,

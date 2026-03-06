@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CSSProperties } from "react";
 
-import { getStreakBadge } from "@/lib/hero-levels";
+import { getHeroLevelProgress, getStreakBadge } from "@/lib/hero-levels";
 import { Profile, SquadState } from "@/lib/types/domain";
 
 interface HeroLevelInfo {
@@ -17,6 +17,7 @@ interface SquadSectionProps {
   squad: SquadState;
   heroLevel: HeroLevelInfo | null;
   personalProgress: number;
+  unreadNotificationCount: number;
   isPressingParentSpot: boolean;
   onLongPressStart: () => void;
   onLongPressEnd: () => void;
@@ -52,18 +53,21 @@ export function SquadSection({
   squad,
   heroLevel,
   personalProgress,
+  unreadNotificationCount,
   isPressingParentSpot,
   onLongPressStart,
   onLongPressEnd,
   showSquadWin,
   onDismissSquadWin,
 }: SquadSectionProps) {
+  const levelProgress = getHeroLevelProgress(profile.powerLevel);
+
   return (
     <>
       <button
         type="button"
         aria-label="Parent control"
-        className={`absolute top-2 left-2 z-40 rounded-xl border-2 border-black px-3 py-2 text-left shadow-[4px_4px_0_#000] transition ${
+        className={`absolute top-2 left-2 z-40 rounded-xl border-2 border-black px-3 py-2 text-left shadow-[4px_4px_0_#000] transition relative ${
           isPressingParentSpot
             ? "scale-95 bg-[var(--hero-yellow)] text-black"
             : "bg-white/95 text-black"
@@ -75,6 +79,14 @@ export function SquadSection({
       >
         <p className="text-[10px] font-black uppercase leading-tight">Parent</p>
         <p className="text-[10px] font-bold uppercase leading-tight">Hold 3s</p>
+        {unreadNotificationCount > 0 ? (
+          <span
+            data-testid="parent-unread-badge"
+            className="absolute -top-2 -right-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-black bg-[var(--hero-red)] px-1 text-[10px] font-black uppercase text-white"
+          >
+            {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+          </span>
+        ) : null}
       </button>
 
       <header className="mb-4 grid gap-3 rounded-2xl border-4 border-black bg-[var(--hero-blue)] p-4 shadow-[6px_6px_0_#000] sm:grid-cols-[auto_1fr] sm:items-center">
@@ -105,11 +117,24 @@ export function SquadSection({
         <div className="grid gap-2">
           <div>
             <div className="mb-1 flex items-center justify-between text-xs font-bold uppercase tracking-wide">
-              <span>Power Level</span>
+              <span>Today&apos;s Progress</span>
               <span>{profile.powerLevel}</span>
             </div>
             <div className="meter-wrap">
               <div className="meter-fill" style={{ width: `${personalProgress}%` }} />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-white/90">
+              <span>Level XP</span>
+              <span>
+                {profile.powerLevel}
+                {levelProgress.nextPower ? ` / ${levelProgress.nextPower}` : " / Max"}
+              </span>
+            </div>
+            <div className="meter-wrap h-3 bg-white/20">
+              <div
+                className="meter-fill bg-[var(--hero-yellow)]"
+                style={{ width: `${levelProgress.progressPercent}%` }}
+              />
             </div>
             {profile.currentStreak > 0 ? (
               <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-[var(--hero-yellow)]">

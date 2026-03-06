@@ -1,4 +1,5 @@
 import { err, getRequestId, mapRouteErrorStatus, ok } from "@/lib/server/api";
+import { reportError } from "@/lib/monitoring";
 import { getRepository } from "@/lib/server/repository";
 import { returnRewardSchema } from "@/lib/server/schemas";
 
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
     const result = await repo.returnReward(parsed.data);
     return ok({ result }, requestId);
   } catch (error) {
+    reportError(error, { route: "public_return_reward" });
     const message = error instanceof Error ? error.message : "Return reward failed";
     return err(mapRouteErrorStatus(message), "RETURN_REWARD_FAILED", message, requestId);
   }

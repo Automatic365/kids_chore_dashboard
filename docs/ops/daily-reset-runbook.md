@@ -61,3 +61,9 @@ This test file verifies:
 - Confirm new cycle date visible in app.
 - Confirm mission completion eligibility for recurring missions reset correctly.
 - Record failure cause and mitigation in release notes.
+
+## CSP Report-Only Tuning
+
+- CSP reports are accepted at `POST /api/internal/csp-report`.
+- Start with report-only violations in logs/Sentry and tune allowed sources before enforcing.
+- Common expected sources to allow: Supabase API host, AI provider API hosts, and app self/data/blob assets.

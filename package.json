@@ -12,6 +12,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.42.0",
     "@supabase/supabase-js": "^2.98.0",
     "clsx": "^2.1.1",
     "idb": "^8.0.3",
@@ -30,6 +31,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^28.1.0",
     "tailwindcss": "^4",
     "typescript": "^5",

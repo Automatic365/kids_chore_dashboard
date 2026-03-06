@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 test("can undo a completed mission", async ({ page }) => {
+  page.on("dialog", (dialog) => {
+    throw new Error(`Unexpected native dialog: ${dialog.message()}`);
+  });
+
   await page.goto("/hero/captain-alpha");
 
   const card = page

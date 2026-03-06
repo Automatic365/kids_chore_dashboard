@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 test("parent can move a mission to trash and restore it", async ({ page }) => {
+  page.on("dialog", (dialog) => {
+    throw new Error(`Unexpected native dialog: ${dialog.message()}`);
+  });
+
   await page.goto("/parent");
 
   const pin =
@@ -23,8 +27,8 @@ test("parent can move a mission to trash and restore it", async ({ page }) => {
   await expect(missionCard).toBeVisible();
   const missionTitle = await missionCard.locator("input").first().inputValue();
 
-  page.on("dialog", (dialog) => void dialog.accept());
   await missionCard.getByRole("button", { name: "Trash" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Move To Trash" }).click();
 
   const trashSection = page
     .locator("section")

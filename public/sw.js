@@ -1,5 +1,10 @@
-const CACHE_NAME = "hero-habits-v2";
-const STATIC_ASSETS = ["/manifest.webmanifest", "/icons/icon-192.svg"];
+const CACHE_NAME = "hero-habits-v3";
+const STATIC_ASSETS = [
+  "/",
+  "/manifest.webmanifest",
+  "/icons/icon-192.svg",
+  "/icons/icon-512.svg",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
