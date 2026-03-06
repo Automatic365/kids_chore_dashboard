@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate scheduler configuration
+        id: validate
         run: |
           set -euo pipefail
 
@@ -19,6 +20,7 @@ jobs:
           if [ -z "${URL}" ] || [ -z "${SECRET}" ]; then
             echo "::warning::Daily reset skipped because DAILY_RESET_URL or INTERNAL_CRON_SECRET is not configured."
             echo "Configure both repo secrets to enable automated reset calls."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -27,8 +29,10 @@ jobs:
             exit 1
           fi
 
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+
       - name: Trigger daily reset endpoint
-        if: ${{ secrets.DAILY_RESET_URL != '' && secrets.INTERNAL_CRON_SECRET != '' }}
+        if: ${{ steps.validate.outputs.should_run == 'true' }}
         run: |
           set -euo pipefail
 
