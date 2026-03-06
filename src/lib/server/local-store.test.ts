@@ -353,6 +353,23 @@ describe("local store completion rules", () => {
     expect(claims.length).toBe(2);
   });
 
+  it("defaults hero card focal point to center and updates it", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    const created = store.createProfile({
+      heroName: "Captain Focus",
+      avatarUrl: "/avatars/captain.svg",
+      uiMode: "text",
+    });
+    expect(created.heroCardObjectPosition).toBe("center");
+
+    const updated = store.updateProfile(created.id, {
+      heroCardObjectPosition: "bottom-right",
+    });
+    expect(updated.heroCardObjectPosition).toBe("bottom-right");
+  });
+
   it("marks notifications read and clears unread count", () => {
     resetLocalStoreForTests();
     const store = getLocalStore();

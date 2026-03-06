@@ -5,6 +5,7 @@ interface AvatarDisplayProps {
   alt: string;
   className?: string;
   textClassName?: string;
+  objectPosition?: string;
 }
 
 function isImageSource(value: string): boolean {
@@ -21,10 +22,11 @@ export function AvatarDisplay({
   alt,
   className,
   textClassName,
+  objectPosition,
 }: AvatarDisplayProps) {
   if (isImageSource(avatarUrl)) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={avatarUrl} alt={alt} className={className} />;
+    return <img src={avatarUrl} alt={alt} className={className} style={{ objectPosition }} />;
   }
 
   return (

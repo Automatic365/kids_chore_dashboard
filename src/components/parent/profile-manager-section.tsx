@@ -9,7 +9,13 @@ import {
   updateProfile as updateProfileRequest,
 } from "@/lib/client-api";
 import { useHeroDialog } from "@/hooks/use-hero-dialog";
-import { Profile, UiMode } from "@/lib/types/domain";
+import { heroCardPositionToCssObjectPosition } from "@/lib/hero-card-position";
+import {
+  HERO_CARD_OBJECT_POSITIONS,
+  HeroCardObjectPosition,
+  Profile,
+  UiMode,
+} from "@/lib/types/domain";
 import { AvatarDisplay } from "@/components/avatar-display";
 import { ImagePicker } from "@/components/parent/image-picker";
 
@@ -23,7 +29,20 @@ interface ProfileDraft {
   heroName: string;
   avatarUrl: string;
   uiMode: UiMode;
+  heroCardObjectPosition: HeroCardObjectPosition;
 }
+
+const HERO_CARD_POSITION_LABELS: Record<HeroCardObjectPosition, string> = {
+  "top-left": "TL",
+  "top-center": "TC",
+  "top-right": "TR",
+  "center-left": "CL",
+  center: "C",
+  "center-right": "CR",
+  "bottom-left": "BL",
+  "bottom-center": "BC",
+  "bottom-right": "BR",
+};
 
 export function ProfileManagerSection({
   profiles,
@@ -51,6 +70,7 @@ export function ProfileManagerSection({
             heroName: profile.heroName,
             avatarUrl: profile.avatarUrl,
             uiMode: profile.uiMode,
+            heroCardObjectPosition: profile.heroCardObjectPosition,
           } satisfies ProfileDraft,
         ]),
       ),
@@ -63,6 +83,7 @@ export function ProfileManagerSection({
         heroName: "",
         avatarUrl: "/avatars/captain.svg",
         uiMode: "text" as UiMode,
+        heroCardObjectPosition: "center" as HeroCardObjectPosition,
       };
       return {
         ...current,
@@ -84,6 +105,7 @@ export function ProfileManagerSection({
         heroName: draft.heroName.trim(),
         avatarUrl: draft.avatarUrl,
         uiMode: draft.uiMode,
+        heroCardObjectPosition: draft.heroCardObjectPosition,
       });
       pushToast("success", `Updated "${draft.heroName.trim()}".`);
       await onRefresh();
@@ -123,6 +145,7 @@ export function ProfileManagerSection({
         heroName: newName.trim(),
         avatarUrl: newAvatar,
         uiMode: newMode,
+        heroCardObjectPosition: "center",
       });
       pushToast("success", `Hero "${newName.trim()}" added.`);
       setNewName("");
@@ -167,6 +190,7 @@ export function ProfileManagerSection({
               heroName: profile.heroName,
               avatarUrl: profile.avatarUrl,
               uiMode: profile.uiMode,
+              heroCardObjectPosition: profile.heroCardObjectPosition,
             } satisfies ProfileDraft);
 
           return (
@@ -179,6 +203,9 @@ export function ProfileManagerSection({
                   avatarUrl={draft.avatarUrl}
                   alt={draft.heroName || profile.heroName}
                   className="grid h-12 w-12 place-items-center rounded-lg border-2 border-black bg-white object-cover text-xl"
+                  objectPosition={heroCardPositionToCssObjectPosition(
+                    draft.heroCardObjectPosition,
+                  )}
                 />
                 <div>
                   <p className="text-xs font-black uppercase text-zinc-500">
@@ -209,6 +236,43 @@ export function ProfileManagerSection({
                 <option value="text">Text mode (readers)</option>
                 <option value="picture">Picture mode (toddlers)</option>
               </select>
+
+              <div className="rounded-lg border-2 border-black p-2">
+                <p className="text-xs font-black uppercase text-zinc-700">
+                  Hero Card Image Focus
+                </p>
+                <div className="mt-2 grid grid-cols-3 gap-1">
+                  {HERO_CARD_OBJECT_POSITIONS.map((position) => {
+                    const isSelected = draft.heroCardObjectPosition === position;
+                    return (
+                      <button
+                        key={position}
+                        type="button"
+                        onClick={() =>
+                          updateDraft(profile.id, {
+                            heroCardObjectPosition: position,
+                          })
+                        }
+                        className={`rounded border-2 px-2 py-1 text-xs font-black ${
+                          isSelected
+                            ? "border-black bg-[var(--hero-yellow)] text-black"
+                            : "border-zinc-400 bg-white text-zinc-700"
+                        }`}
+                        title={`Set focus: ${position}`}
+                      >
+                        {HERO_CARD_POSITION_LABELS[position]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateDraft(profile.id, { heroCardObjectPosition: "center" })}
+                  className="mt-2 rounded border-2 border-black bg-zinc-100 px-2 py-1 text-[11px] font-black uppercase text-black"
+                >
+                  Center
+                </button>
+              </div>
 
               <div className="flex flex-wrap gap-2">
                 <button

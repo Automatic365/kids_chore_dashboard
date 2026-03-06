@@ -1,5 +1,17 @@
 export type UiMode = "text" | "picture";
 export type AiProvider = "openai" | "gemini";
+export const HERO_CARD_OBJECT_POSITIONS = [
+  "top-left",
+  "top-center",
+  "top-right",
+  "center-left",
+  "center",
+  "center-right",
+  "bottom-left",
+  "bottom-center",
+  "bottom-right",
+] as const;
+export type HeroCardObjectPosition = (typeof HERO_CARD_OBJECT_POSITIONS)[number];
 export type NotificationEventType =
   | "mission_complete"
   | "reward_claimed"
@@ -10,6 +22,7 @@ export interface Profile {
   heroName: string;
   avatarUrl: string;
   uiMode: UiMode;
+  heroCardObjectPosition: HeroCardObjectPosition;
   powerLevel: number;
   currentStreak: number;
   lastStreakDate: string | null;
@@ -200,12 +213,14 @@ export interface CreateProfileInput {
   heroName: string;
   avatarUrl: string;
   uiMode: UiMode;
+  heroCardObjectPosition?: HeroCardObjectPosition;
 }
 
 export interface UpdateProfileInput {
   heroName?: string;
   avatarUrl?: string;
   uiMode?: UiMode;
+  heroCardObjectPosition?: HeroCardObjectPosition;
 }
 
 export interface ParentDashboardData {

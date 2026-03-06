@@ -41,4 +41,37 @@ describe("PATCH /api/parent/profiles/[id]", () => {
     expect(payload.ok).toBe(false);
     expect(payload.error.code).toBe("UNAUTHORIZED");
   });
+
+  it("updates hero card focal point on valid payload", async () => {
+    isParentAuthenticatedMock.mockResolvedValue(true);
+    updateProfileMock.mockResolvedValue({
+      id: "p1",
+      heroName: "Captain Focus",
+      avatarUrl: "/avatars/captain.svg",
+      uiMode: "text",
+      heroCardObjectPosition: "bottom-left",
+      powerLevel: 0,
+      currentStreak: 0,
+      lastStreakDate: null,
+    });
+
+    const request = new Request("http://localhost/api/parent/profiles/p1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ heroCardObjectPosition: "bottom-left" }),
+    });
+
+    const response = await PATCH(request, { params: Promise.resolve({ id: "p1" }) });
+    const payload = (await response.json()) as {
+      ok: boolean;
+      profile: { heroCardObjectPosition: string };
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.profile.heroCardObjectPosition).toBe("bottom-left");
+    expect(updateProfileMock).toHaveBeenCalledWith("p1", {
+      heroCardObjectPosition: "bottom-left",
+    });
+  });
 });

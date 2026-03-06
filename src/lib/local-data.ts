@@ -4,6 +4,7 @@ import { openDB } from "idb";
 
 import { clamp, toLocalDateString } from "@/lib/date";
 import { computeNextStreakState, evaluateUndoEligibility } from "@/lib/game-rules";
+import { toHeroCardObjectPosition } from "@/lib/hero-card-position";
 import { publicEnv } from "@/lib/public-env";
 import { generateRewardStickerDataUrl } from "@/lib/reward-art";
 import { sha256Hex } from "@/lib/security/hash-client";
@@ -81,6 +82,7 @@ const defaultProfiles: Profile[] = [
     heroName: "Captain Comet",
     avatarUrl: "/avatars/captain.svg",
     uiMode: "text",
+    heroCardObjectPosition: "center",
     powerLevel: 0,
     currentStreak: 0,
     lastStreakDate: null,
@@ -90,6 +92,7 @@ const defaultProfiles: Profile[] = [
     heroName: "Super Tot",
     avatarUrl: "/avatars/super.svg",
     uiMode: "picture",
+    heroCardObjectPosition: "center",
     powerLevel: 0,
     currentStreak: 0,
     lastStreakDate: null,
@@ -199,6 +202,7 @@ type StoredMission = Omit<Mission, "recurringDaily" | "instructions"> & {
 type StoredProfile = Omit<Profile, "currentStreak" | "lastStreakDate"> & {
   currentStreak?: number;
   lastStreakDate?: string | null;
+  heroCardObjectPosition?: string;
 };
 
 function normalizeMission(mission: StoredMission): Mission {
@@ -213,6 +217,7 @@ function normalizeMission(mission: StoredMission): Mission {
 function normalizeProfile(profile: StoredProfile): Profile {
   return {
     ...profile,
+    heroCardObjectPosition: toHeroCardObjectPosition(profile.heroCardObjectPosition),
     currentStreak: profile.currentStreak ?? 0,
     lastStreakDate: profile.lastStreakDate ?? null,
   };
@@ -1246,6 +1251,7 @@ export async function localCreateProfile(input: CreateProfileInput): Promise<Pro
     heroName: input.heroName,
     avatarUrl: input.avatarUrl,
     uiMode: input.uiMode,
+    heroCardObjectPosition: toHeroCardObjectPosition(input.heroCardObjectPosition),
     powerLevel: 0,
     currentStreak: 0,
     lastStreakDate: null,
@@ -1270,6 +1276,9 @@ export async function localUpdateProfile(
     ...(input.heroName !== undefined ? { heroName: input.heroName } : {}),
     ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}),
     ...(input.uiMode !== undefined ? { uiMode: input.uiMode } : {}),
+    ...(input.heroCardObjectPosition !== undefined
+      ? { heroCardObjectPosition: toHeroCardObjectPosition(input.heroCardObjectPosition) }
+      : {}),
   };
 
   await db.put("profiles", next);

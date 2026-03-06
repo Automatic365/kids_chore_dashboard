@@ -22,6 +22,7 @@ describe("GET /api/public/profiles", () => {
         heroName: "Captain Alpha",
         avatarUrl: "https://example.com/avatar-a.png",
         uiMode: "text",
+        heroCardObjectPosition: "center",
         powerLevel: 20,
         currentStreak: 2,
         lastStreakDate: "2026-03-05",

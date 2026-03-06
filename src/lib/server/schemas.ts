@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HERO_CARD_OBJECT_POSITIONS } from "@/lib/types/domain";
 
 export const missionCompletionSchema = z.object({
   missionId: z.string().min(1),
@@ -46,6 +47,7 @@ export const createProfileSchema = z.object({
   heroName: z.string().min(2).max(60),
   avatarUrl: z.string().min(1).max(2_000_000),
   uiMode: z.enum(["text", "picture"]),
+  heroCardObjectPosition: z.enum(HERO_CARD_OBJECT_POSITIONS).optional(),
 });
 
 export const updateProfileSchema = z
@@ -53,6 +55,7 @@ export const updateProfileSchema = z
     heroName: z.string().min(2).max(60).optional(),
     avatarUrl: z.string().min(1).max(2_000_000).optional(),
     uiMode: z.enum(["text", "picture"]).optional(),
+    heroCardObjectPosition: z.enum(HERO_CARD_OBJECT_POSITIONS).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field must be provided",

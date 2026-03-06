@@ -1,6 +1,7 @@
 import { toLocalDateString } from "@/lib/date";
 import { env, hasSupabaseAdmin } from "@/lib/env";
 import { evaluateUndoEligibility } from "@/lib/game-rules";
+import { toHeroCardObjectPosition } from "@/lib/hero-card-position";
 import { generateRewardStickerDataUrl } from "@/lib/reward-art";
 import { getLocalStore } from "@/lib/server/local-store";
 import { hashPin, verifyPin } from "@/lib/server/pin";
@@ -72,6 +73,7 @@ function mapProfile(row: {
   hero_name: string;
   avatar_url: string;
   ui_mode: "text" | "picture";
+  hero_card_object_position?: string | null;
   power_level: number;
   current_streak?: number | null;
   last_streak_date?: string | null;
@@ -81,6 +83,7 @@ function mapProfile(row: {
     heroName: row.hero_name,
     avatarUrl: row.avatar_url,
     uiMode: row.ui_mode,
+    heroCardObjectPosition: toHeroCardObjectPosition(row.hero_card_object_position),
     powerLevel: row.power_level,
     currentStreak: Number(row.current_streak ?? 0),
     lastStreakDate: row.last_streak_date ?? null,
@@ -118,6 +121,7 @@ type ProfileRow = {
   hero_name: string;
   avatar_url: string;
   ui_mode: "text" | "picture";
+  hero_card_object_position?: string | null;
   power_level: number;
   current_streak?: number | null;
   last_streak_date?: string | null;
@@ -348,7 +352,7 @@ class SupabaseRepository implements Repository {
 
     const { data, error } = await admin
       .from("profiles")
-      .select("id, hero_name, avatar_url, ui_mode, power_level")
+      .select("id, hero_name, avatar_url, ui_mode, hero_card_object_position, power_level")
       .order("hero_name");
 
     if (error) throw new Error(error.message);
@@ -1209,9 +1213,10 @@ class SupabaseRepository implements Repository {
         hero_name: input.heroName,
         avatar_url: input.avatarUrl,
         ui_mode: input.uiMode,
+        hero_card_object_position: toHeroCardObjectPosition(input.heroCardObjectPosition),
         power_level: 0,
       })
-      .select("id, hero_name, avatar_url, ui_mode, power_level")
+      .select("id, hero_name, avatar_url, ui_mode, hero_card_object_position, power_level")
       .single();
 
     if (error) throw new Error(error.message);
@@ -1226,12 +1231,15 @@ class SupabaseRepository implements Repository {
     if (input.heroName !== undefined) payload.hero_name = input.heroName;
     if (input.avatarUrl !== undefined) payload.avatar_url = input.avatarUrl;
     if (input.uiMode !== undefined) payload.ui_mode = input.uiMode;
+    if (input.heroCardObjectPosition !== undefined) {
+      payload.hero_card_object_position = toHeroCardObjectPosition(input.heroCardObjectPosition);
+    }
 
     const { data, error } = await admin
       .from("profiles")
       .update(payload)
       .eq("id", id)
-      .select("id, hero_name, avatar_url, ui_mode, power_level")
+      .select("id, hero_name, avatar_url, ui_mode, hero_card_object_position, power_level")
       .single();
 
     if (error) throw new Error(error.message);

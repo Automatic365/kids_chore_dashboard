@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { fetchProfiles } from "@/lib/client-api";
 import { AvatarDisplay } from "@/components/avatar-display";
+import { heroCardPositionToCssObjectPosition } from "@/lib/hero-card-position";
 import { getHeroLevel, getStreakBadge } from "@/lib/hero-levels";
 import { Profile } from "@/lib/types/domain";
 
@@ -70,7 +71,7 @@ export function HeroSelect() {
             <Link
               key={profile.id}
               href={`/hero/${profile.id}`}
-              className="comic-card comic-card-interactive group relative flex min-h-[280px] flex-col overflow-hidden"
+              className="comic-card comic-card-interactive group relative min-h-[340px] overflow-hidden"
             >
               <button
                 type="button"
@@ -80,7 +81,10 @@ export function HeroSelect() {
                   const url = `${window.location.origin}/hero/${profile.id}`;
                   void navigator.clipboard.writeText(url).then(() => {
                     setCopiedId(profile.id);
-                    window.setTimeout(() => setCopiedId((current) => (current === profile.id ? null : current)), 2000);
+                    window.setTimeout(
+                      () => setCopiedId((current) => (current === profile.id ? null : current)),
+                      2000,
+                    );
                   });
                 }}
                 className="touch-target absolute top-2 right-2 z-10 rounded-lg border-2 border-black bg-white/95 px-2 py-1 text-xs font-black uppercase text-black"
@@ -92,32 +96,33 @@ export function HeroSelect() {
                   Copied!
                 </span>
               ) : null}
-              <div className="relative h-48 w-full overflow-hidden bg-[var(--hero-blue)]/30 md:h-64">
+
+              <div className="relative h-full min-h-[340px] w-full overflow-hidden bg-[var(--hero-blue)]/30">
                 <AvatarDisplay
                   avatarUrl={profile.avatarUrl}
                   alt={profile.heroName}
                   className="grid h-full w-full place-items-center object-cover text-7xl transition duration-300 group-hover:scale-105"
+                  objectPosition={heroCardPositionToCssObjectPosition(
+                    profile.heroCardObjectPosition,
+                  )}
                   textClassName="drop-shadow-[0_3px_0_#000]"
                 />
-              </div>
-              <div className="flex flex-1 flex-col justify-center gap-2 p-4 text-center md:p-5">
-                <h2 className="text-3xl font-black uppercase text-white sm:text-4xl">
-                  {profile.heroName}
-                </h2>
-                <p
-                  className="text-sm font-black uppercase"
-                  style={{ color: getHeroLevel(profile.powerLevel).color }}
-                >
-                  Level: {getHeroLevel(profile.powerLevel).name}
-                </p>
-                {profile.currentStreak > 0 ? (
-                  <p className="text-xs font-bold uppercase text-[var(--hero-yellow)]">
-                    {getStreakBadge(profile.currentStreak) ?? "🔥"} {profile.currentStreak} Day Streak
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-4 pt-10 text-white">
+                  <h2 className="truncate text-2xl font-black uppercase sm:text-3xl">
+                    {profile.heroName}
+                  </h2>
+                  <p
+                    className="mt-1 text-sm font-black uppercase"
+                    style={{ color: getHeroLevel(profile.powerLevel).color }}
+                  >
+                    Level: {getHeroLevel(profile.powerLevel).name}
                   </p>
-                ) : null}
-                <p className="text-base font-semibold uppercase tracking-wide text-white/80">
-                  {profile.uiMode === "text" ? "Team Captain Mode" : "Super-Tot Mode"}
-                </p>
+                  {profile.currentStreak > 0 ? (
+                    <p className="mt-1 text-xs font-bold uppercase text-[var(--hero-yellow)]">
+                      {getStreakBadge(profile.currentStreak) ?? "🔥"} {profile.currentStreak} Day Streak
+                    </p>
+                  ) : null}
+                </div>
               </div>
             </Link>
           ))}

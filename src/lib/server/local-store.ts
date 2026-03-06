@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { clamp, toLocalDateString } from "@/lib/date";
 import { env } from "@/lib/env";
 import { computeNextStreakState, evaluateUndoEligibility } from "@/lib/game-rules";
+import { toHeroCardObjectPosition } from "@/lib/hero-card-position";
 import { generateRewardStickerDataUrl } from "@/lib/reward-art";
 import {
   AwardSquadPowerInput,
@@ -69,6 +70,7 @@ function defaultProfiles(): Profile[] {
       heroName: "Captain Comet",
       avatarUrl: "/avatars/captain.svg",
       uiMode: "text",
+      heroCardObjectPosition: "center",
       powerLevel: 0,
       currentStreak: 0,
       lastStreakDate: null,
@@ -78,6 +80,7 @@ function defaultProfiles(): Profile[] {
       heroName: "Super Tot",
       avatarUrl: "/avatars/super.svg",
       uiMode: "picture",
+      heroCardObjectPosition: "center",
       powerLevel: 0,
       currentStreak: 0,
       lastStreakDate: null,
@@ -206,6 +209,7 @@ function normalizeLoadedState(state: LocalState): LocalState {
     ...state,
     profiles: (state.profiles ?? []).map((profile) => ({
       ...profile,
+      heroCardObjectPosition: toHeroCardObjectPosition(profile.heroCardObjectPosition),
       currentStreak: profile.currentStreak ?? 0,
       lastStreakDate: profile.lastStreakDate ?? null,
     })),
@@ -827,6 +831,7 @@ class LocalStore {
       heroName: input.heroName,
       avatarUrl: input.avatarUrl,
       uiMode: input.uiMode,
+      heroCardObjectPosition: toHeroCardObjectPosition(input.heroCardObjectPosition),
       powerLevel: 0,
       currentStreak: 0,
       lastStreakDate: null,
@@ -843,6 +848,9 @@ class LocalStore {
     if (input.heroName !== undefined) profile.heroName = input.heroName;
     if (input.avatarUrl !== undefined) profile.avatarUrl = input.avatarUrl;
     if (input.uiMode !== undefined) profile.uiMode = input.uiMode;
+    if (input.heroCardObjectPosition !== undefined) {
+      profile.heroCardObjectPosition = toHeroCardObjectPosition(input.heroCardObjectPosition);
+    }
 
     this.saveToDisk();
     return { ...profile };
