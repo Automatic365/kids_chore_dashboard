@@ -199,6 +199,7 @@ function initialState(): LocalState {
       squadPowerMax: 100,
       cycleDate: toLocalDateString(new Date(), env.appTimeZone),
       squadGoal: null,
+      goalCompletionCount: 0,
     },
     parentPinHash: env.parentPinHash || hashPin(env.parentPinPlain),
   };
@@ -222,6 +223,7 @@ function normalizeLoadedState(state: LocalState): LocalState {
     squad: {
       ...state.squad,
       squadGoal: state.squad?.squadGoal ?? null,
+      goalCompletionCount: state.squad?.goalCompletionCount ?? 0,
     },
   };
 }
@@ -743,6 +745,13 @@ class LocalStore {
 
   setSquadGoal(goal: SquadGoal | null): SquadState {
     this.state.squad.squadGoal = goal ? { ...goal } : null;
+    this.saveToDisk();
+    return this.getSquadState();
+  }
+
+  redeemSquadGoal(): SquadState {
+    this.state.squad.squadPowerCurrent = 0;
+    this.state.squad.goalCompletionCount = (this.state.squad.goalCompletionCount ?? 0) + 1;
     this.saveToDisk();
     return this.getSquadState();
   }

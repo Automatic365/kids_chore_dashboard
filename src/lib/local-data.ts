@@ -332,6 +332,7 @@ async function ensureSeeded(db: Awaited<ReturnType<typeof openDB>>) {
     squadPowerMax: 100,
     cycleDate: today,
     squadGoal: null,
+    goalCompletionCount: 0,
   };
 
   const parentSettings: ParentSettingsLocal = {
@@ -383,10 +384,12 @@ async function ensureCurrentCycle(db: Awaited<ReturnType<typeof openDB>>): Promi
     squadPowerMax: 100,
     cycleDate: toLocalDateString(new Date(), publicEnv.appTimeZone),
     squadGoal: null,
+    goalCompletionCount: 0,
   };
   const squad: SquadState = {
     ...squadRaw,
     squadGoal: squadRaw.squadGoal ?? null,
+    goalCompletionCount: squadRaw.goalCompletionCount ?? 0,
   };
 
   const today = toLocalDateString(new Date(), publicEnv.appTimeZone);
@@ -1141,6 +1144,20 @@ export async function localSetSquadGoal(goal: SquadGoal | null): Promise<SquadSt
   const next: SquadState = {
     ...squad,
     squadGoal: goal ? { ...goal } : null,
+  };
+  await setMetaValue(db, "squad", next);
+  return next;
+}
+
+export async function localRedeemSquadGoal(): Promise<SquadState> {
+  assertParentSession();
+
+  const db = await getDb();
+  const squad = await ensureCurrentCycle(db);
+  const next: SquadState = {
+    ...squad,
+    squadPowerCurrent: 0,
+    goalCompletionCount: (squad.goalCompletionCount ?? 0) + 1,
   };
   await setMetaValue(db, "squad", next);
   return next;

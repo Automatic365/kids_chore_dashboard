@@ -55,6 +55,7 @@ export interface Repository {
   returnReward(input: ReturnRewardInput): Promise<ReturnRewardResult>;
   getRewardClaims(profileId: string): Promise<RewardClaimEntry[]>;
   setSquadGoal(goal: SquadGoal | null): Promise<SquadState>;
+  redeemSquadGoal(): Promise<SquadState>;
   getMissionHistory(profileId: string, days: number): Promise<MissionHistoryEntry[]>;
   getNotifications(limit?: number): Promise<NotificationEvent[]>;
   markNotificationsRead(): Promise<MarkNotificationsReadResult>;
@@ -147,6 +148,7 @@ type SquadRow = {
   squad_goal_title?: string | null;
   squad_goal_target_power?: number | null;
   squad_goal_reward_description?: string | null;
+  goal_completion_count?: number | null;
 };
 
 type RewardRow = {
@@ -203,6 +205,7 @@ function mapSquadRow(row: SquadRow): SquadState {
             rewardDescription: row.squad_goal_reward_description,
           }
         : null,
+    goalCompletionCount: row.goal_completion_count ?? 0,
   };
 }
 
@@ -300,6 +303,10 @@ class LocalRepository implements Repository {
     return this.store.setSquadGoal(goal);
   }
 
+  async redeemSquadGoal(): Promise<SquadState> {
+    return this.store.redeemSquadGoal();
+  }
+
   async getMissionHistory(profileId: string, days: number): Promise<MissionHistoryEntry[]> {
     return this.store.getMissionHistory(profileId, days);
   }
@@ -367,7 +374,7 @@ class SupabaseRepository implements Repository {
     const { data, error } = await admin
       .from("squad_state")
       .select(
-        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description",
+        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description, goal_completion_count",
       )
       .eq("id", 1)
       .maybeSingle();
@@ -388,7 +395,7 @@ class SupabaseRepository implements Repository {
           squad_goal_reward_description: null,
         })
         .select(
-          "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description",
+          "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description, goal_completion_count",
         )
         .single();
 
@@ -659,11 +666,31 @@ class SupabaseRepository implements Repository {
       .update(payload)
       .eq("id", 1)
       .select(
-        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description",
+        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description, goal_completion_count",
       )
       .single();
     if (error) throw new Error(error.message);
 
+    return mapSquadRow(data as SquadRow);
+  }
+
+  async redeemSquadGoal(): Promise<SquadState> {
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new Error("Supabase is not configured");
+
+    const current = await this.getSquadState();
+    const nextCount = current.goalCompletionCount + 1;
+
+    const { data, error } = await admin
+      .from("squad_state")
+      .update({ squad_power_current: 0, goal_completion_count: nextCount })
+      .eq("id", 1)
+      .select(
+        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description, goal_completion_count",
+      )
+      .single();
+
+    if (error) throw new Error(error.message);
     return mapSquadRow(data as SquadRow);
   }
 
@@ -1136,7 +1163,7 @@ class SupabaseRepository implements Repository {
       .update({ squad_power_current: nextValue })
       .eq("id", 1)
       .select(
-        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description",
+        "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description, goal_completion_count",
       )
       .single();
 

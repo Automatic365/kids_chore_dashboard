@@ -174,6 +174,11 @@ export function SquadSection({
           <p className="text-xs font-bold uppercase">
             Reward: {squad.squadGoal.rewardDescription}
           </p>
+          {squad.goalCompletionCount > 0 ? (
+            <p className="mt-1 text-xs font-black uppercase tracking-wide text-black/60">
+              ★ Completed {squad.goalCompletionCount}×
+            </p>
+          ) : null}
         </section>
       ) : null}
 
