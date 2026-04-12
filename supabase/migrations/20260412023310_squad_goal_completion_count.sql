@@ -1,0 +1,2 @@
+ALTER TABLE squad_state
+  ADD COLUMN IF NOT EXISTS goal_completion_count INTEGER NOT NULL DEFAULT 0;
