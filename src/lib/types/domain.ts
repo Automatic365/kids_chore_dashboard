@@ -50,6 +50,7 @@ export interface SquadState {
   squadPowerMax: number;
   cycleDate: string;
   squadGoal: SquadGoal | null;
+  goalCompletionCount: number;
 }
 
 export interface SquadGoal {

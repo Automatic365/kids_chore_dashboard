@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import {
   awardSquadPower as awardSquadPowerRequest,
+  redeemSquadGoal as redeemSquadGoalRequest,
   setSquadGoal as setSquadGoalRequest,
 } from "@/lib/client-api";
 import { SquadState } from "@/lib/types/domain";
@@ -64,6 +65,16 @@ export function SquadControlSection({
       await onRefresh();
     } catch {
       pushToast("error", "Failed to set squad goal.");
+    }
+  }
+
+  async function handleRedeem() {
+    try {
+      await redeemSquadGoalRequest();
+      pushToast("success", "Reward redeemed! Squad power reset to zero.");
+      await onRefresh();
+    } catch {
+      pushToast("error", "Failed to redeem reward.");
     }
   }
 
@@ -158,6 +169,16 @@ export function SquadControlSection({
             rows={2}
             maxLength={500}
           />
+          {squad.squadGoal &&
+          squad.squadPowerCurrent >= squad.squadGoal.targetPower ? (
+            <button
+              type="button"
+              onClick={() => void handleRedeem()}
+              className="rounded-xl border-2 border-black bg-green-400 px-4 py-2 text-sm font-black uppercase text-black"
+            >
+              ★ Redeem Reward
+            </button>
+          ) : null}
           <div className="flex gap-2">
             <button
               type="button"
