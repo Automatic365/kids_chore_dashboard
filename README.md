@@ -73,11 +73,16 @@ Important tradeoff:
 Use this only if you want cloud sync/API-backed mode.
 
 1. Create a Supabase project.
-2. Apply `supabase/migrations/20260304113000_init.sql`.
+2. Apply all SQL files in `supabase/migrations` in timestamp order.
 3. Update `supabase/seed.sql` with a real `pin_hash` value.
 4. Run seed SQL.
 5. Set `NEXT_PUBLIC_USE_REMOTE_API=true` in `.env.local`.
 6. Configure `.env.local` with Supabase keys.
+
+Required for cross-device image consistency:
+- Migration `20260307114000_storage_hero_media_bucket.sql` creates public bucket `hero-media`.
+- Migration `20260311101500_expand_hero_media_types_and_size.sql` expands upload support (HEIC/HEIF) and raises limit to 10MB.
+- Parent image uploads use `/api/parent/media/upload` and store URLs from this bucket.
 
 ### PIN Hash
 
@@ -128,7 +133,8 @@ If no key is set, the app falls back to deterministic non-AI mission generation.
 
 ## Notes
 
-- Mission image upload UI currently accepts image URLs for MVP speed.
+- In local-only mode, file uploads are stored as data URLs in browser storage (device-local).
+- In remote mode (`NEXT_PUBLIC_USE_REMOTE_API=true`), parent file uploads are stored in Supabase Storage (`hero-media`) and are consistent across devices/incognito.
 - Default demo data is preloaded in local fallback mode.
 - Release checklist: see `docs/release-checklist.md`.
 - Architecture docs:

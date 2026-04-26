@@ -1,0 +1,58 @@
+import { CreateRewardInput } from "@/lib/types/domain";
+
+export const STARTER_REWARD_PRESETS: CreateRewardInput[] = [
+  {
+    title: "10 Extra Minutes of TV",
+    description: "Enjoy 10 extra minutes of TV time after check-in with Mission Command.",
+    pointCost: 20,
+    targetDaysToEarn: 3,
+    minDaysBetweenClaims: 10,
+    isActive: true,
+    sortOrder: 1,
+  },
+  {
+    title: "Extra Snack",
+    description: "Pick one bonus snack approved by Mission Command.",
+    pointCost: 25,
+    targetDaysToEarn: 2,
+    minDaysBetweenClaims: null,
+    isActive: true,
+    sortOrder: 2,
+  },
+  {
+    title: "Extra Book",
+    description: "Choose one extra bedtime story or daytime book.",
+    pointCost: 18,
+    targetDaysToEarn: 2,
+    minDaysBetweenClaims: 1,
+    isActive: true,
+    sortOrder: 3,
+  },
+  {
+    title: "Piece of Candy",
+    description: "Earn one small candy treat from Mission Command.",
+    pointCost: 30,
+    targetDaysToEarn: 1,
+    minDaysBetweenClaims: null,
+    isActive: true,
+    sortOrder: 4,
+  },
+  {
+    title: "Special Hug",
+    description: "Cash in for an extra-long special hug and hero squeeze.",
+    pointCost: 12,
+    targetDaysToEarn: 1,
+    minDaysBetweenClaims: null,
+    isActive: true,
+    sortOrder: 5,
+  },
+  {
+    title: "In-App Sticker",
+    description: "Unlock a new trophy-case sticker inside HeroHabits.",
+    pointCost: 22,
+    targetDaysToEarn: 2,
+    minDaysBetweenClaims: null,
+    isActive: true,
+    sortOrder: 6,
+  },
+];

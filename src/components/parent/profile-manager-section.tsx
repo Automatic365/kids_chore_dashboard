@@ -209,7 +209,10 @@ export function ProfileManagerSection({
                 />
                 <div>
                   <p className="text-xs font-black uppercase text-zinc-500">
-                    Current Power: {profile.powerLevel}
+                    Reward Points: {profile.rewardPoints}
+                  </p>
+                  <p className="text-xs font-black uppercase text-zinc-500">
+                    XP: {profile.xpPoints}
                   </p>
                 </div>
               </div>
@@ -226,6 +229,7 @@ export function ProfileManagerSection({
                 value={draft.avatarUrl}
                 onChange={(value) => updateDraft(profile.id, { avatarUrl: value })}
                 placeholder="Avatar URL"
+                uploadKind="avatar"
               />
 
               <select
@@ -318,7 +322,12 @@ export function ProfileManagerSection({
           placeholder="Hero name"
           className="rounded-lg border-2 border-black bg-white px-3 py-2 text-black"
         />
-        <ImagePicker value={newAvatar} onChange={setNewAvatar} placeholder="Avatar URL" />
+        <ImagePicker
+          value={newAvatar}
+          onChange={setNewAvatar}
+          placeholder="Avatar URL"
+          uploadKind="avatar"
+        />
         <select
           value={newMode}
           onChange={(e) => setNewMode(e.target.value as UiMode)}

@@ -5,7 +5,7 @@ values
 on conflict (id) do nothing;
 
 insert into public.squad_state (id, squad_power_current, squad_power_max, cycle_date)
-values (1, 0, 100, current_date)
+values (1, 0, 1000, current_date)
 on conflict (id) do nothing;
 
 insert into public.parent_settings (id, pin_hash)

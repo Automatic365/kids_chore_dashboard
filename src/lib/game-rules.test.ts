@@ -4,6 +4,7 @@ import {
   computeNextStreakState,
   evaluateUndoEligibility,
   previousCycleDate,
+  recomputeStreakStateFromCompletionDates,
 } from "@/lib/game-rules";
 
 describe("game-rules", () => {
@@ -31,9 +32,29 @@ describe("game-rules", () => {
     expect(next.lastStreakDate).toBe("2026-03-05");
   });
 
+  it("recomputes streak from completion dates", () => {
+    const streak = recomputeStreakStateFromCompletionDates([
+      "2026-03-01",
+      "2026-03-02",
+      "2026-03-04",
+      "2026-03-05",
+      "2026-03-05",
+    ]);
+
+    expect(streak.currentStreak).toBe(2);
+    expect(streak.lastStreakDate).toBe("2026-03-05");
+  });
+
+  it("returns zero streak when there are no completion dates", () => {
+    const streak = recomputeStreakStateFromCompletionDates([]);
+
+    expect(streak.currentStreak).toBe(0);
+    expect(streak.lastStreakDate).toBeNull();
+  });
+
   it("blocks undo when unspent points are insufficient", () => {
     const result = evaluateUndoEligibility({
-      profilePowerLevel: 5,
+      profileRewardPoints: 5,
       pointsAwarded: 12,
     });
 
@@ -45,7 +66,7 @@ describe("game-rules", () => {
   it("allows force undo regardless of current unspent points", () => {
     const result = evaluateUndoEligibility({
       force: true,
-      profilePowerLevel: 0,
+      profileRewardPoints: 0,
       pointsAwarded: 20,
     });
 

@@ -1,5 +1,6 @@
 export type UiMode = "text" | "picture";
 export type AiProvider = "openai" | "gemini";
+export type RewardStickerType = "vehicle" | "companion";
 export const HERO_CARD_OBJECT_POSITIONS = [
   "top-left",
   "top-center",
@@ -23,6 +24,8 @@ export interface Profile {
   avatarUrl: string;
   uiMode: UiMode;
   heroCardObjectPosition: HeroCardObjectPosition;
+  rewardPoints: number;
+  xpPoints: number;
   powerLevel: number;
   currentStreak: number;
   lastStreakDate: string | null;
@@ -76,6 +79,8 @@ export interface CompletionResult {
   // A mission awards at most once per cycle for recurring missions and once ever for one-off missions.
   awarded: boolean;
   alreadyCompleted: boolean;
+  profileRewardPoints: number;
+  profileXpPoints: number;
   profilePowerLevel: number;
   squadPowerCurrent: number;
   squadPowerMax: number;
@@ -87,6 +92,8 @@ export interface UncompletionResult {
   wasCompleted: boolean;
   insufficientUnspentPoints?: boolean;
   pointsRequiredToUndo?: number;
+  profileRewardPoints: number;
+  profileXpPoints: number;
   profilePowerLevel: number;
   squadPowerCurrent: number;
   squadPowerMax: number;
@@ -123,6 +130,8 @@ export interface Reward {
   title: string;
   description: string;
   pointCost: number;
+  targetDaysToEarn: number | null;
+  minDaysBetweenClaims: number | null;
   isActive: boolean;
   sortOrder: number;
 }
@@ -134,6 +143,9 @@ export interface RewardClaimRow {
   pointCost: number;
   claimedAt: string;
   imageUrl?: string | null;
+  stickerType?: RewardStickerType;
+  stickerConceptId?: string | null;
+  stickerPromptSeed?: string | null;
 }
 
 export interface RewardClaimEntry {
@@ -144,12 +156,17 @@ export interface RewardClaimEntry {
   pointCost: number;
   claimedAt: string;
   imageUrl: string | null;
+  stickerType?: RewardStickerType;
+  stickerConceptId?: string | null;
+  stickerPromptSeed?: string | null;
 }
 
 export interface CreateRewardInput {
   title: string;
   description: string;
   pointCost: number;
+  targetDaysToEarn?: number | null;
+  minDaysBetweenClaims?: number | null;
   isActive?: boolean;
   sortOrder?: number;
 }
@@ -158,6 +175,8 @@ export interface UpdateRewardInput {
   title?: string;
   description?: string;
   pointCost?: number;
+  targetDaysToEarn?: number | null;
+  minDaysBetweenClaims?: number | null;
   isActive?: boolean;
   sortOrder?: number;
 }
@@ -165,6 +184,7 @@ export interface UpdateRewardInput {
 export interface ClaimRewardInput {
   profileId: string;
   rewardId: string;
+  claimedAt?: string;
 }
 
 export interface ReturnRewardInput {
@@ -177,6 +197,11 @@ export interface ClaimRewardResult {
   claimed: boolean;
   insufficientPoints: boolean;
   alreadyClaimed: boolean;
+  cooldownActive: boolean;
+  nextClaimDate: string | null;
+  cooldownDaysRemaining: number | null;
+  newRewardPoints: number;
+  newXpPoints: number;
   newPowerLevel: number;
   reward: Reward;
 }
@@ -185,6 +210,8 @@ export interface ReturnRewardResult {
   // Returning a reward removes its claim row and restores deducted power.
   returned: boolean;
   restoredPoints: number;
+  newRewardPoints: number;
+  newXpPoints: number;
   newPowerLevel: number;
 }
 
@@ -194,6 +221,40 @@ export interface MissionHistoryEntry {
     title: string;
     powerAwarded: number;
   }>;
+}
+
+export interface MissionBackfillEntry {
+  id: string;
+  profileId: string;
+  missionId: string;
+  missionTitle: string;
+  localDate: string;
+  pointsAwarded: number;
+  createdAt: string;
+}
+
+export interface CreateMissionBackfillInput {
+  profileId: string;
+  missionId: string;
+  localDate: string;
+}
+
+export interface CreateMissionBackfillResult {
+  entry: MissionBackfillEntry;
+  profileRewardPoints: number;
+  profileXpPoints: number;
+  profilePowerLevel: number;
+  squadPowerCurrent: number;
+  squadPowerMax: number;
+}
+
+export interface DeleteMissionBackfillResult {
+  removed: boolean;
+  profileRewardPoints: number;
+  profileXpPoints: number;
+  profilePowerLevel: number;
+  squadPowerCurrent: number;
+  squadPowerMax: number;
 }
 
 export interface NotificationEvent {
@@ -230,4 +291,49 @@ export interface ParentDashboardData {
   trashedMissions: MissionWithState[];
   squad: SquadState;
   rewards: Reward[];
+}
+
+export interface ParentSummaryMissionStat {
+  title: string;
+  completedCount: number;
+  totalRewardPoints: number;
+  totalXpPoints: number;
+}
+
+export interface ParentSummaryDay {
+  date: string;
+  completed: number;
+  rewardPoints: number;
+  xpPoints: number;
+}
+
+export interface ParentSummaryHero {
+  profileId: string;
+  heroName: string;
+  todayCompleted: number;
+  todayTotal: number;
+  averageRewardPointsPerDay: number;
+  averageXpPointsPerDay: number;
+  topMissions: ParentSummaryMissionStat[];
+  daily: ParentSummaryDay[];
+}
+
+export interface ParentSummaryHousehold {
+  averageRewardPointsPerDay: number;
+  averageXpPointsPerDay: number;
+  averageRewardPointsPerHeroPerDay: number;
+  averageXpPointsPerHeroPerDay: number;
+  totalRewardPointsEarned: number;
+  totalXpPointsEarned: number;
+  totalCompleted: number;
+  topMissions: ParentSummaryMissionStat[];
+  daily: ParentSummaryDay[];
+}
+
+export interface ParentSummaryData {
+  cycleDate: string;
+  windowDays: number;
+  days: string[];
+  household: ParentSummaryHousehold;
+  heroes: ParentSummaryHero[];
 }

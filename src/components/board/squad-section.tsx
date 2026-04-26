@@ -10,6 +10,7 @@ interface HeroLevelInfo {
   name: string;
   color: string;
   nextPower: number | null;
+  displayName: string;
 }
 
 interface SquadSectionProps {
@@ -17,6 +18,9 @@ interface SquadSectionProps {
   squad: SquadState;
   heroLevel: HeroLevelInfo | null;
   personalProgress: number;
+  completedCount: number;
+  missionCount: number;
+  todayRewardPointsEarned: number;
   unreadNotificationCount: number;
   isPressingParentSpot: boolean;
   onLongPressStart: () => void;
@@ -53,6 +57,9 @@ export function SquadSection({
   squad,
   heroLevel,
   personalProgress,
+  completedCount,
+  missionCount,
+  todayRewardPointsEarned,
   unreadNotificationCount,
   isPressingParentSpot,
   onLongPressStart,
@@ -107,7 +114,7 @@ export function SquadSection({
                 className="text-xs font-black uppercase tracking-wide"
                 style={{ color: heroLevel.color }}
               >
-                {heroLevel.name}
+                {heroLevel.displayName}
                 {heroLevel.nextPower ? ` · Next ${heroLevel.nextPower}` : " · Max"}
               </p>
             ) : null}
@@ -117,18 +124,29 @@ export function SquadSection({
         <div className="grid gap-2">
           <div>
             <div className="mb-1 flex items-center justify-between text-xs font-bold uppercase tracking-wide">
-              <span>Today&apos;s Progress</span>
-              <span>{profile.powerLevel}</span>
+              <span>Mission Progress Today</span>
+              <span>{personalProgress}%</span>
             </div>
             <div className="meter-wrap">
               <div className="meter-fill" style={{ width: `${personalProgress}%` }} />
             </div>
             <div className="mt-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-white/90">
-              <span>Level XP</span>
+              <span>Completed Today</span>
               <span>
-                {profile.powerLevel}
-                {levelProgress.nextPower ? ` / ${levelProgress.nextPower}` : " / Max"}
+                {completedCount}/{Math.max(0, missionCount)}
               </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-white/90">
+              <span>Today&apos;s Reward Points</span>
+              <span>{todayRewardPointsEarned}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-white/90">
+              <span>Personal Reward Points</span>
+              <span>{profile.rewardPoints}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-white/90">
+              <span>Level XP</span>
+              <span>{profile.xpPoints}{levelProgress.nextPower ? ` / ${levelProgress.nextPower}` : " / Max"}</span>
             </div>
             <div className="meter-wrap h-3 bg-white/20">
               <div

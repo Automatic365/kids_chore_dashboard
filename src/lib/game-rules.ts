@@ -1,6 +1,6 @@
 export interface UndoEligibilityInput {
   force?: boolean;
-  profilePowerLevel: number;
+  profileRewardPoints: number;
   pointsAwarded: number;
 }
 
@@ -19,6 +19,11 @@ export interface StreakStateInput {
 export interface StreakStateResult {
   currentStreak: number;
   lastStreakDate: string;
+}
+
+export interface RecomputedStreakState {
+  currentStreak: number;
+  lastStreakDate: string | null;
 }
 
 export function previousCycleDate(cycleDate: string): string {
@@ -50,6 +55,47 @@ export function computeNextStreakState(input: StreakStateInput): StreakStateResu
   };
 }
 
+export function recomputeStreakStateFromCompletionDates(
+  completionDates: string[],
+): RecomputedStreakState {
+  const uniqueSortedDates = Array.from(new Set(completionDates)).sort((a, b) =>
+    a.localeCompare(b),
+  );
+
+  if (uniqueSortedDates.length === 0) {
+    return {
+      currentStreak: 0,
+      lastStreakDate: null,
+    };
+  }
+
+  const lastStreakDate = uniqueSortedDates[uniqueSortedDates.length - 1] ?? null;
+  if (!lastStreakDate) {
+    return {
+      currentStreak: 0,
+      lastStreakDate: null,
+    };
+  }
+
+  let streak = 1;
+  let cursor = lastStreakDate;
+
+  for (let index = uniqueSortedDates.length - 2; index >= 0; index -= 1) {
+    const candidate = uniqueSortedDates[index];
+    if (!candidate) continue;
+    if (candidate !== previousCycleDate(cursor)) {
+      break;
+    }
+    streak += 1;
+    cursor = candidate;
+  }
+
+  return {
+    currentStreak: streak,
+    lastStreakDate,
+  };
+}
+
 export function evaluateUndoEligibility(
   input: UndoEligibilityInput,
 ): UndoEligibilityResult {
@@ -60,7 +106,7 @@ export function evaluateUndoEligibility(
     };
   }
 
-  if (input.profilePowerLevel < input.pointsAwarded) {
+  if (input.profileRewardPoints < input.pointsAwarded) {
     return {
       allowed: false,
       insufficientUnspentPoints: true,

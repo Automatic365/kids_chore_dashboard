@@ -1,0 +1,2 @@
+export const ANALYTICS_START_DATE = "2026-03-11";
+export const ANALYTICS_MAX_WINDOW_DAYS = 30;

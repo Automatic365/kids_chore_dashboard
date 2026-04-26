@@ -26,6 +26,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
   const router = useRouter();
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
+  const [boardEditMode, setBoardEditMode] = useState(false);
 
   const {
     profile,
@@ -46,8 +47,14 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
     showTrophyCase,
     showHistory,
     unreadNotificationCount,
+    updatingRewardById,
+    updatingMissionById,
+    savedRewardById,
+    savedMissionById,
+    rewardCooldownById,
     heroLevel,
     personalProgress,
+    todayRewardPointsEarned,
     dialogNode,
     showLevelUp,
     levelUpName,
@@ -56,6 +63,9 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
     dismissLevelUp,
     completeMissionAction,
     undoMissionAction,
+    deleteMissionAction,
+    updateMissionAction,
+    updateRewardCostAction,
     claimRewardAction,
     returnClaimAction,
     toggleHistory,
@@ -69,7 +79,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
     setPinError(null);
   }, [setShowPinGate]);
 
-  const handleParentLogin = useCallback(async () => {
+  const handleParentDashboardLogin = useCallback(async () => {
     const ok = await loginParent(pin);
     if (!ok) {
       setPinError("PIN is incorrect");
@@ -81,6 +91,19 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
     setPinError(null);
     router.push("/parent");
   }, [pin, router, setShowPinGate]);
+
+  const handleBoardEditLogin = useCallback(async () => {
+    const ok = await loginParent(pin);
+    if (!ok) {
+      setPinError("PIN is incorrect");
+      return;
+    }
+
+    setShowPinGate(false);
+    setPin("");
+    setPinError(null);
+    setBoardEditMode(true);
+  }, [pin, setShowPinGate]);
 
   if (loading) {
     return (
@@ -126,6 +149,9 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
         squad={squad}
         heroLevel={heroLevel}
         personalProgress={personalProgress}
+        completedCount={missions.filter((mission) => mission.completedToday).length}
+        missionCount={missions.length}
+        todayRewardPointsEarned={todayRewardPointsEarned}
         unreadNotificationCount={unreadNotificationCount}
         isPressingParentSpot={isPressingParentSpot}
         onLongPressStart={startLongPress}
@@ -134,22 +160,47 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
         onDismissSquadWin={dismissSquadWin}
       />
 
-      {profile.uiMode === "text" && profile.powerLevel >= SECRET_HERO_CODE_THRESHOLD ? (
+      {profile.uiMode === "text" && profile.rewardPoints >= SECRET_HERO_CODE_THRESHOLD ? (
         <SecretCodeSection code={SECRET_HERO_CODE_VALUE} />
+      ) : null}
+
+      {boardEditMode ? (
+        <section className="comic-card mb-4 flex items-center justify-between gap-3 p-3">
+          <p className="text-sm font-black uppercase text-white">
+            Board Edit Mode: edit or trash missions here and update reward costs without leaving this hero&apos;s board.
+          </p>
+          <button
+            type="button"
+            onClick={() => setBoardEditMode(false)}
+            className="rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase text-black"
+          >
+            Done Editing
+          </button>
+        </section>
       ) : null}
 
       <MissionsSection
         missions={missions}
         profile={profile}
+        boardEditMode={boardEditMode}
+        updatingMissionById={updatingMissionById}
+        savedMissionById={savedMissionById}
         onComplete={completeMissionAction}
         onUndo={undoMissionAction}
+        onDelete={deleteMissionAction}
+        onUpdate={updateMissionAction}
         effectText={effectText}
       />
 
       <RewardsSection
         rewards={rewards}
         profile={profile}
+        boardEditMode={boardEditMode}
+        updatingRewardById={updatingRewardById}
+        savedRewardById={savedRewardById}
+        rewardCooldownById={rewardCooldownById}
         onClaim={claimRewardAction}
+        onUpdateCost={updateRewardCostAction}
       />
 
       <TrophyCaseSection
@@ -174,7 +225,8 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
           pinError={pinError}
           onPinChange={setPin}
           onCancel={closePinGate}
-          onSubmit={handleParentLogin}
+          onDashboardSubmit={handleParentDashboardLogin}
+          onBoardEditSubmit={handleBoardEditLogin}
         />
       ) : null}
 

@@ -49,6 +49,9 @@ export function mapRouteErrorStatus(message: string): number {
     normalized.includes("not found") ||
     normalized.includes("unavailable") ||
     normalized.includes("inactive") ||
+    normalized.includes("already exists") ||
+    normalized.includes("before today") ||
+    normalized.includes("only parent backfills") ||
     normalized.includes("failed")
   ) {
     return 400;

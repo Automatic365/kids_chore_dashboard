@@ -41,7 +41,7 @@ describe("GET /api/parent/summary", () => {
     expect(getProfilesMock).not.toHaveBeenCalled();
   });
 
-  it("returns 7-day hero summary for authenticated parent", async () => {
+  it("returns launch-window household and per-hero analytics for authenticated parent", async () => {
     isParentAuthenticatedMock.mockResolvedValue(true);
     getProfilesMock.mockResolvedValue([
       {
@@ -51,8 +51,8 @@ describe("GET /api/parent/summary", () => {
     ]);
     getSquadStateMock.mockResolvedValue({
       squadPowerCurrent: 55,
-      squadPowerMax: 100,
-      cycleDate: "2026-03-05",
+      squadPowerMax: 1000,
+      cycleDate: "2026-03-12",
       squadGoal: null,
     });
     getMissionsMock.mockResolvedValue([
@@ -60,9 +60,9 @@ describe("GET /api/parent/summary", () => {
       { id: "m2", title: "Mission: Toy Tidy" },
     ]);
     getMissionHistoryMock.mockResolvedValue([
-      { date: "2026-03-04", missions: [{ title: "Operation: Brush Teeth", powerAwarded: 10 }] },
+      { date: "2026-03-11", missions: [{ title: "Operation: Brush Teeth", powerAwarded: 10 }] },
       {
-        date: "2026-03-05",
+        date: "2026-03-12",
         missions: [
           { title: "Operation: Brush Teeth", powerAwarded: 10 },
           { title: "Mission: Toy Tidy", powerAwarded: 8 },
@@ -73,26 +73,56 @@ describe("GET /api/parent/summary", () => {
     const response = await GET();
     const payload = (await response.json()) as {
       cycleDate: string;
+      windowDays: number;
       days: string[];
+      household: {
+        totalCompleted: number;
+        totalRewardPointsEarned: number;
+        averageRewardPointsPerHeroPerDay: number;
+        topMissions: Array<{ title: string; completedCount: number }>;
+        daily: Array<{ date: string; completed: number }>;
+      };
       heroes: Array<{
         profileId: string;
+        heroName: string;
         todayCompleted: number;
         todayTotal: number;
-        daily: Array<{ date: string; completed: number }>;
+        averageRewardPointsPerDay: number;
+        topMissions: Array<{ title: string; completedCount: number }>;
+        daily: Array<{ date: string; completed: number; rewardPoints: number }>;
       }>;
     };
 
     expect(response.status).toBe(200);
-    expect(payload.cycleDate).toBe("2026-03-05");
-    expect(payload.days).toHaveLength(7);
-    expect(payload.days[0]).toBe("2026-02-27");
-    expect(payload.days[6]).toBe("2026-03-05");
+    expect(payload.cycleDate).toBe("2026-03-12");
+    expect(payload.windowDays).toBe(2);
+    expect(payload.days).toEqual(["2026-03-11", "2026-03-12"]);
+    expect(payload.household.totalCompleted).toBe(3);
+    expect(payload.household.totalRewardPointsEarned).toBe(28);
+    expect(payload.household.averageRewardPointsPerHeroPerDay).toBeCloseTo(14, 5);
+    expect(payload.household.topMissions[0]).toMatchObject({
+      title: "Operation: Brush Teeth",
+      completedCount: 2,
+    });
+    expect(
+      payload.household.daily.find((day) => day.date === "2026-03-12")?.completed,
+    ).toBe(2);
     expect(payload.heroes).toHaveLength(1);
-    expect(payload.heroes[0]?.profileId).toBe("captain-alpha");
-    expect(payload.heroes[0]?.todayCompleted).toBe(2);
-    expect(payload.heroes[0]?.todayTotal).toBe(2);
-    expect(payload.heroes[0]?.daily.find((d) => d.date === "2026-03-04")?.completed).toBe(1);
+    expect(payload.heroes[0]).toMatchObject({
+      profileId: "captain-alpha",
+      heroName: "Captain Alpha",
+      todayCompleted: 2,
+      todayTotal: 2,
+    });
+    expect(payload.heroes[0]?.averageRewardPointsPerDay).toBeCloseTo(14, 5);
+    expect(payload.heroes[0]?.topMissions[0]).toMatchObject({
+      title: "Operation: Brush Teeth",
+      completedCount: 2,
+    });
+    expect(
+      payload.heroes[0]?.daily.find((day) => day.date === "2026-03-11")?.rewardPoints,
+    ).toBe(10);
     expect(getMissionsMock).toHaveBeenCalledWith("captain-alpha");
-    expect(getMissionHistoryMock).toHaveBeenCalledWith("captain-alpha", 7);
+    expect(getMissionHistoryMock).toHaveBeenCalledWith("captain-alpha", 30);
   });
 });

@@ -15,13 +15,25 @@ function makeMaybeSingle(table: string) {
     return Promise.resolve({ data: { hero_name: "Captain Comet" }, error: null });
   }
   if (table === "rewards") {
-    return Promise.resolve({ data: { title: "Hero Sticker" }, error: null });
+    return Promise.resolve({
+      data: {
+        id: "r1",
+        title: "Hero Sticker",
+        description: "Unlock a sticker friend.",
+        point_cost: 25,
+        target_days_to_earn: 2,
+        min_days_between_claims: null,
+        is_active: true,
+        sort_order: 1,
+      },
+      error: null,
+    });
   }
   return Promise.resolve({ data: null, error: null });
 }
 
 function makeFromChain(table: string) {
-  return {
+  const chain = {
     select() {
       return this;
     },
@@ -31,7 +43,23 @@ function makeFromChain(table: string) {
     maybeSingle() {
       return makeMaybeSingle(table);
     },
+    then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
+      if (table === "reward_claims") {
+        return Promise.resolve({
+          data: [
+            {
+              reward_id: "r-other",
+              claimed_at: "2026-03-01T12:00:00.000Z",
+              sticker_concept_id: "jet",
+            },
+          ],
+          error: null,
+        }).then(resolve, reject);
+      }
+      return Promise.resolve({ data: [], error: null }).then(resolve, reject);
+    },
   };
+  return chain;
 }
 
 describe("SupabaseRepository claim_reward_v1", () => {
@@ -66,6 +94,8 @@ describe("SupabaseRepository claim_reward_v1", () => {
             title: "Hero Sticker",
             description: "A shiny sticker",
             point_cost: 25,
+            target_days_to_earn: 2,
+            min_days_between_claims: null,
             is_active: true,
             sort_order: 1,
           },
@@ -82,6 +112,8 @@ describe("SupabaseRepository claim_reward_v1", () => {
             title: "Hero Sticker",
             description: "A shiny sticker",
             point_cost: 25,
+            target_days_to_earn: 2,
+            min_days_between_claims: null,
             is_active: true,
             sort_order: 1,
           },
@@ -105,6 +137,9 @@ describe("SupabaseRepository claim_reward_v1", () => {
         p_profile_id: "captain-alpha",
         p_reward_id: "r1",
         p_image_url: expect.any(String),
+        p_sticker_type: expect.stringMatching(/vehicle|companion/),
+        p_sticker_concept_id: expect.any(String),
+        p_sticker_prompt_seed: expect.any(String),
       }),
     );
     expect(rpcMock).toHaveBeenNthCalledWith(
@@ -114,6 +149,9 @@ describe("SupabaseRepository claim_reward_v1", () => {
         p_profile_id: "captain-alpha",
         p_reward_id: "r1",
         p_image_url: expect.any(String),
+        p_sticker_type: expect.stringMatching(/vehicle|companion/),
+        p_sticker_concept_id: expect.any(String),
+        p_sticker_prompt_seed: expect.any(String),
       }),
     );
 

@@ -69,7 +69,7 @@ begin
       'was_completed', false,
       'profile_power_level', coalesce(v_profile_power, 0),
       'squad_power_current', coalesce(v_squad_current, 0),
-      'squad_power_max', coalesce(v_squad_max, 100)
+      'squad_power_max', coalesce(v_squad_max, 1000)
     );
   end if;
 
@@ -95,7 +95,7 @@ begin
     'was_completed', true,
     'profile_power_level', coalesce(v_profile_power, 0),
     'squad_power_current', coalesce(v_squad_current, 0),
-    'squad_power_max', coalesce(v_squad_max, 100)
+    'squad_power_max', coalesce(v_squad_max, 1000)
   );
 end;
 $$;

@@ -39,6 +39,7 @@ describe("local-data mission economy", () => {
 
   it("allows claiming the same reward more than once with enough power", async () => {
     await localData.localLoginParent("1234");
+    await localData.localUpdateReward("r1", { minDaysBetweenClaims: null });
     const mission = await localData.localCreateMission({
       profileId: "captain-alpha",
       title: "Power Boost",

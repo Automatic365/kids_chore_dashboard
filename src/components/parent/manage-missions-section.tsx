@@ -336,6 +336,7 @@ export function ManageMissionsSection({
                   value={mission.imageUrl}
                   onChange={(url) => update({ ...mission, imageUrl: url })}
                   placeholder="Image URL"
+                  uploadKind="mission"
                 />
               </div>
             </article>

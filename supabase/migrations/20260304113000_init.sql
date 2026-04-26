@@ -39,7 +39,7 @@ create unique index if not exists mission_history_daily_completion_idx
 create table if not exists public.squad_state (
   id integer primary key default 1,
   squad_power_current integer not null default 0,
-  squad_power_max integer not null default 100,
+  squad_power_max integer not null default 1000,
   cycle_date date not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -126,7 +126,7 @@ begin
       'already_completed', true,
       'profile_power_level', coalesce(v_profile_power, 0),
       'squad_power_current', coalesce(v_squad_current, 0),
-      'squad_power_max', coalesce(v_squad_max, 100)
+      'squad_power_max', coalesce(v_squad_max, 1000)
     );
   end if;
 
@@ -169,7 +169,7 @@ begin
       'already_completed', true,
       'profile_power_level', coalesce(v_profile_power, 0),
       'squad_power_current', coalesce(v_squad_current, 0),
-      'squad_power_max', coalesce(v_squad_max, 100)
+      'squad_power_max', coalesce(v_squad_max, 1000)
     );
   end if;
 
@@ -212,7 +212,7 @@ begin
     'already_completed', false,
     'profile_power_level', coalesce(v_profile_power, 0),
     'squad_power_current', coalesce(v_squad_current, 0),
-    'squad_power_max', coalesce(v_squad_max, 100)
+    'squad_power_max', coalesce(v_squad_max, 1000)
   );
 end;
 $$;

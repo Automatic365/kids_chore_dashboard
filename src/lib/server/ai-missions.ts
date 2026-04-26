@@ -22,21 +22,90 @@ interface GenerateMissionParams {
   provider?: AiProvider;
 }
 
-function fallbackMissionName(task: string): string {
+const MISSION_PREFIXES = [
+  "Operation",
+  "Mission",
+  "Power Patrol",
+  "Hero Alert",
+  "Squad Signal",
+  "Mega Rescue",
+] as const;
+
+const ACTION_WORDS = [
+  "Rescue",
+  "Blast",
+  "Shield",
+  "Power",
+  "Zoom",
+  "Spark",
+  "Guardian",
+  "Turbo",
+] as const;
+
+function toTitleCase(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function normalizeForComparison(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\b(operation|mission|power patrol|hero alert|squad signal|mega rescue)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function buildThemedTitle(task: string, index: number): string {
   const compact = task.replace(/\s+/g, " ").trim();
   if (!compact) {
     return "Hero Mission";
   }
 
-  const max = 50;
+  const prefix = MISSION_PREFIXES[index % MISSION_PREFIXES.length];
+  const actionWord = ACTION_WORDS[index % ACTION_WORDS.length];
+  const max = 34;
   const clipped = compact.length > max ? `${compact.slice(0, max - 1)}…` : compact;
-  return `Operation: ${clipped}`;
+  return `${prefix}: ${actionWord} ${toTitleCase(clipped)}`;
+}
+
+function buildThemedInstructions(task: string): string {
+  const compact = task.replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return "Complete this hero mission with speed, focus, and teamwork.";
+  }
+
+  const lower = compact.charAt(0).toLowerCase() + compact.slice(1);
+  return `Hero job: ${lower}. Move fast, finish the task fully, and report back to Mission Command when it is done.`;
+}
+
+function enforceHeroTheme(task: string, mission: GeneratedMission, index: number): GeneratedMission {
+  const normalizedTask = normalizeForComparison(task);
+  const normalizedTitle = normalizeForComparison(mission.title);
+  const normalizedInstructions = normalizeForComparison(mission.instructions);
+
+  const titleTooLiteral =
+    normalizedTitle === normalizedTask ||
+    normalizedTitle === task.toLowerCase().trim();
+  const instructionsTooLiteral =
+    normalizedInstructions === normalizedTask ||
+    normalizedInstructions === task.toLowerCase().trim();
+
+  return {
+    ...mission,
+    title: titleTooLiteral ? buildThemedTitle(task, index) : mission.title,
+    instructions: instructionsTooLiteral
+      ? buildThemedInstructions(task)
+      : mission.instructions,
+  };
 }
 
 function fallbackMissions(tasks: string[]): GeneratedMission[] {
-  return tasks.slice(0, 30).map((task) => ({
-    title: fallbackMissionName(task),
-    instructions: task.trim(),
+  return tasks.slice(0, 30).map((task, index) => ({
+    title: buildThemedTitle(task, index),
+    instructions: buildThemedInstructions(task),
     powerValue: 10,
     recurringDaily: true,
   }));
@@ -103,9 +172,15 @@ function extractGeminiResponseText(payload: unknown): string {
 function buildPrompt(tasks: string[], profileName?: string, uiMode?: "text" | "picture") {
   return [
     "Convert household tasks into kid-friendly superhero missions.",
+    "Every mission title must sound like a comic-book mission, not a restatement of the chore.",
+    "Do not copy the task verbatim as the title.",
+    "Make the title playful, superhero-themed, and 2-6 words long.",
+    "Keep instructions concrete and easy for a parent to read aloud to a child.",
     "Return strict JSON with mission title and concise action instructions.",
     profileName ? `Target hero: ${profileName}.` : "",
     uiMode ? `UI mode: ${uiMode}.` : "",
+    "Good example: task `empty the dishwasher` -> title `Mission: Kitchen Power-Up`, instructions `Take the clean dishes out of the dishwasher and put each one in its home.`",
+    "Bad example: title `Empty the Dishwasher`.",
     "Tasks:",
     ...tasks.map((task, index) => `${index + 1}. ${task}`),
   ]
@@ -263,7 +338,9 @@ export async function generateMissionsFromTasks({
         : await requestOpenAiMissions(prompt);
 
     if (missions) {
-      return missions;
+      return missions.map((mission, index) =>
+        enforceHeroTheme(cleaned[index] ?? mission.title, mission, index),
+      );
     }
   } catch {
     // Fall through to deterministic mission generation.

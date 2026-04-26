@@ -3,12 +3,15 @@ import {
   localClaimReward,
   localChangeParentPin,
   localCompleteMission,
+  localCreateMissionBackfill,
   localCreateMission,
   localCreateProfile,
   localCreateReward,
+  localDeleteMissionBackfill,
   localDeleteMission,
   localDeleteProfile,
   localDeleteReward,
+  localGetMissionBackfills,
   localGetNotifications,
   localGetRewardClaims,
   localGetUnreadNotificationCount,
@@ -30,22 +33,29 @@ import {
   localUpdateProfile,
   localUpdateReward,
 } from "@/lib/local-data";
+import { ANALYTICS_MAX_WINDOW_DAYS, ANALYTICS_START_DATE } from "@/lib/analytics-config";
+import { buildParentSummary } from "@/lib/parent-analytics";
 import { publicEnv } from "@/lib/public-env";
 import {
   AwardSquadPowerInput,
   ClaimRewardInput,
   ClaimRewardResult,
   CompletionResult,
+  CreateMissionBackfillInput,
+  CreateMissionBackfillResult,
   CreateMissionInput,
   CreateProfileInput,
   CreateRewardInput,
+  DeleteMissionBackfillResult,
   MarkNotificationsReadResult,
   Mission,
+  MissionBackfillEntry,
   MissionHistoryEntry,
   MissionUncompletionRequest,
   MissionWithState,
   NotificationEvent,
   ParentDashboardData,
+  ParentSummaryData,
   Profile,
   Reward,
   RewardClaimEntry,
@@ -483,6 +493,66 @@ export async function claimReward(input: ClaimRewardInput): Promise<ClaimRewardR
   return data.result;
 }
 
+export async function createMissionBackfill(
+  input: CreateMissionBackfillInput,
+): Promise<CreateMissionBackfillResult> {
+  return withFallback(
+    async () => {
+      const response = await fetch("/api/parent/missions/backfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Mission backfill failed"));
+      }
+      const data = (await response.json()) as { result: CreateMissionBackfillResult };
+      return data.result;
+    },
+    () => localCreateMissionBackfill(input),
+  );
+}
+
+export async function fetchMissionBackfills(
+  profileId: string,
+): Promise<MissionBackfillEntry[]> {
+  return withFallback(
+    async () => {
+      const response = await fetch(
+        `/api/parent/missions/backfill?profileId=${encodeURIComponent(profileId)}`,
+        {
+          cache: "no-store",
+        },
+      );
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Failed to load backfills"));
+      }
+      const data = (await response.json()) as { backfills: MissionBackfillEntry[] };
+      return data.backfills;
+    },
+    () => localGetMissionBackfills(profileId),
+  );
+}
+
+export async function deleteMissionBackfill(id: string): Promise<DeleteMissionBackfillResult> {
+  return withFallback(
+    async () => {
+      const response = await fetch(`/api/parent/missions/backfill/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Failed to remove backfill"));
+      }
+      const data = (await response.json()) as { result: DeleteMissionBackfillResult };
+      return data.result;
+    },
+    () => localDeleteMissionBackfill(id),
+  );
+}
+
 export async function returnReward(input: ReturnRewardInput): Promise<ReturnRewardResult> {
   return withFallback(
     async () => {
@@ -647,16 +717,53 @@ export async function generateAvatar(heroName: string): Promise<string> {
   return data.avatarDataUrl;
 }
 
-export interface ParentSummaryData {
-  cycleDate: string;
-  days: string[];
-  heroes: Array<{
-    profileId: string;
-    heroName: string;
-    todayCompleted: number;
-    todayTotal: number;
-    daily: Array<{ date: string; completed: number }>;
-  }>;
+export async function uploadParentMedia(
+  file: File,
+  kind: "avatar" | "mission" = "mission",
+): Promise<string> {
+  const formData = new FormData();
+  formData.set("file", file);
+  formData.set("kind", kind);
+
+  const response = await fetch("/api/parent/media/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+    throw new Error(getApiErrorMessage(err, "Media upload failed"));
+  }
+
+  const data = (await response.json()) as { url: string };
+  return data.url;
+}
+
+export interface SignedParentMediaUpload {
+  bucket: string;
+  path: string;
+  token: string;
+  url: string;
+}
+
+export async function createSignedParentMediaUpload(input: {
+  kind: "avatar" | "mission";
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+}): Promise<SignedParentMediaUpload> {
+  const response = await fetch("/api/parent/media/signed-upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+    throw new Error(getApiErrorMessage(err, "Failed to prepare media upload"));
+  }
+
+  return (await response.json()) as SignedParentMediaUpload;
 }
 
 export async function fetchParentSummary(): Promise<ParentSummaryData> {
@@ -673,36 +780,28 @@ export async function fetchParentSummary(): Promise<ParentSummaryData> {
         localGetProfiles(),
         localGetSquadState(),
       ]);
-      const dates: string[] = [];
-      const cycle = new Date(`${squad.cycleDate}T00:00:00.000Z`);
-      for (let i = 6; i >= 0; i -= 1) {
-        const d = new Date(cycle);
-        d.setUTCDate(cycle.getUTCDate() - i);
-        dates.push(d.toISOString().slice(0, 10));
-      }
-
-      const heroes = await Promise.all(
+      const profileData = await Promise.all(
         profiles.map(async (profile) => {
           const [missions, history] = await Promise.all([
             localGetMissions(profile.id),
-            localGetMissionHistory(profile.id, 7),
+            localGetMissionHistory(profile.id, ANALYTICS_MAX_WINDOW_DAYS),
           ]);
-          const counts = new Map(history.map((entry) => [entry.date, entry.missions.length]));
-          return {
-            profileId: profile.id,
-            heroName: profile.heroName,
-            todayCompleted: counts.get(squad.cycleDate) ?? 0,
-            todayTotal: missions.length,
-            daily: dates.map((date) => ({ date, completed: counts.get(date) ?? 0 })),
-          };
+          return { profileId: profile.id, missions, history };
         }),
       );
 
-      return {
+      return buildParentSummary({
         cycleDate: squad.cycleDate,
-        days: dates,
-        heroes,
-      };
+        windowDays: ANALYTICS_MAX_WINDOW_DAYS,
+        analyticsStartDate: ANALYTICS_START_DATE,
+        profiles,
+        missionsByProfileId: new Map(
+          profileData.map((entry) => [entry.profileId, entry.missions]),
+        ),
+        historyByProfileId: new Map(
+          profileData.map((entry) => [entry.profileId, entry.history]),
+        ),
+      });
     },
   );
 }

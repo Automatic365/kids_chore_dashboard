@@ -2,20 +2,37 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { clamp, toLocalDateString } from "@/lib/date";
+import { clamp, isValidLocalDateString, toLocalDateString } from "@/lib/date";
 import { env } from "@/lib/env";
-import { computeNextStreakState, evaluateUndoEligibility } from "@/lib/game-rules";
+import {
+  computeNextStreakState,
+  evaluateUndoEligibility,
+  recomputeStreakStateFromCompletionDates,
+} from "@/lib/game-rules";
 import { toHeroCardObjectPosition } from "@/lib/hero-card-position";
+import {
+  buildMissionBackfillClientRequestId,
+  isMissionBackfillClientRequestId,
+} from "@/lib/mission-backfill";
+import { getRewardCooldownStatus } from "@/lib/reward-cooldown";
+import { STARTER_REWARD_PRESETS } from "@/lib/reward-presets";
+import { compareRewardsByCost } from "@/lib/reward-order";
 import { generateRewardStickerDataUrl } from "@/lib/reward-art";
+import { generateRewardClaimArt } from "@/lib/server/reward-claim-art";
+import { DEFAULT_SQUAD_POWER_MAX, normalizeSquadPowerMax } from "@/lib/squad-config";
 import {
   AwardSquadPowerInput,
   ClaimRewardInput,
   ClaimRewardResult,
   CompletionResult,
+  CreateMissionBackfillInput,
+  CreateMissionBackfillResult,
   CreateMissionInput,
   CreateProfileInput,
   CreateRewardInput,
+  DeleteMissionBackfillResult,
   Mission,
+  MissionBackfillEntry,
   MissionHistoryEntry,
   MissionCompletionRequest,
   MissionUncompletionRequest,
@@ -71,6 +88,8 @@ function defaultProfiles(): Profile[] {
       avatarUrl: "/avatars/captain.svg",
       uiMode: "text",
       heroCardObjectPosition: "center",
+      rewardPoints: 0,
+      xpPoints: 0,
       powerLevel: 0,
       currentStreak: 0,
       lastStreakDate: null,
@@ -81,6 +100,8 @@ function defaultProfiles(): Profile[] {
       avatarUrl: "/avatars/super.svg",
       uiMode: "picture",
       heroCardObjectPosition: "center",
+      rewardPoints: 0,
+      xpPoints: 0,
       powerLevel: 0,
       currentStreak: 0,
       lastStreakDate: null,
@@ -166,24 +187,16 @@ function defaultMissions(): Mission[] {
 }
 
 function defaultRewards(): Reward[] {
-  return [
-    {
-      id: "r1",
-      title: "Hero Sticker",
-      description: "Pick one sticker from Mission Command.",
-      pointCost: 25,
-      isActive: true,
-      sortOrder: 1,
-    },
-    {
-      id: "r2",
-      title: "Comic Break",
-      description: "15 minutes of comic or story time.",
-      pointCost: 40,
-      isActive: true,
-      sortOrder: 2,
-    },
-  ];
+  return STARTER_REWARD_PRESETS.map((reward, index) => ({
+    id: `r${index + 1}`,
+    title: reward.title,
+    description: reward.description,
+    pointCost: reward.pointCost,
+    targetDaysToEarn: reward.targetDaysToEarn ?? null,
+    minDaysBetweenClaims: reward.minDaysBetweenClaims ?? null,
+    isActive: reward.isActive ?? true,
+    sortOrder: reward.sortOrder ?? index + 1,
+  }));
 }
 
 function initialState(): LocalState {
@@ -196,7 +209,7 @@ function initialState(): LocalState {
     notifications: [],
     squad: {
       squadPowerCurrent: 0,
-      squadPowerMax: 100,
+      squadPowerMax: DEFAULT_SQUAD_POWER_MAX,
       cycleDate: toLocalDateString(new Date(), env.appTimeZone),
       squadGoal: null,
       goalCompletionCount: 0,
@@ -210,18 +223,32 @@ function normalizeLoadedState(state: LocalState): LocalState {
     ...state,
     profiles: (state.profiles ?? []).map((profile) => ({
       ...profile,
+      rewardPoints: profile.rewardPoints ?? profile.powerLevel ?? 0,
+      xpPoints: profile.xpPoints ?? profile.powerLevel ?? 0,
+      powerLevel: profile.xpPoints ?? profile.powerLevel ?? 0,
       heroCardObjectPosition: toHeroCardObjectPosition(profile.heroCardObjectPosition),
       currentStreak: profile.currentStreak ?? 0,
       lastStreakDate: profile.lastStreakDate ?? null,
     })),
     rewards:
       state.rewards && state.rewards.length > 0
-        ? state.rewards
+        ? state.rewards.map((reward) => ({
+            ...reward,
+            targetDaysToEarn:
+              typeof reward.targetDaysToEarn === "number"
+                ? reward.targetDaysToEarn
+                : null,
+            minDaysBetweenClaims:
+              typeof reward.minDaysBetweenClaims === "number"
+                ? reward.minDaysBetweenClaims
+                : null,
+          }))
         : defaultRewards(),
     rewardClaims: state.rewardClaims ?? [],
     notifications: state.notifications ?? [],
     squad: {
       ...state.squad,
+      squadPowerMax: normalizeSquadPowerMax(state.squad?.squadPowerMax),
       squadGoal: state.squad?.squadGoal ?? null,
       goalCompletionCount: state.squad?.goalCompletionCount ?? 0,
     },
@@ -280,6 +307,21 @@ class LocalStore {
     });
   }
 
+  private recomputeProfileStreak(profileId: string): void {
+    const profile = this.state.profiles.find((item) => item.id === profileId);
+    if (!profile) {
+      return;
+    }
+
+    const streak = recomputeStreakStateFromCompletionDates(
+      this.state.missionHistory
+        .filter((item) => item.profileId === profileId)
+        .map((item) => item.completedOnLocalDate),
+    );
+    profile.currentStreak = streak.currentStreak;
+    profile.lastStreakDate = streak.lastStreakDate;
+  }
+
   getProfiles(): Profile[] {
     return [...this.state.profiles];
   }
@@ -325,11 +367,13 @@ class LocalStore {
     );
 
     if (existingByRequestId) {
+      const profile = this.state.profiles.find((p) => p.id === input.profileId);
       return {
         awarded: false,
         alreadyCompleted: true,
-        profilePowerLevel:
-          this.state.profiles.find((p) => p.id === input.profileId)?.powerLevel ?? 0,
+        profileRewardPoints: profile?.rewardPoints ?? 0,
+        profileXpPoints: profile?.xpPoints ?? profile?.powerLevel ?? 0,
+        profilePowerLevel: profile?.powerLevel ?? 0,
         squadPowerCurrent: this.state.squad.squadPowerCurrent,
         squadPowerMax: this.state.squad.squadPowerMax,
       };
@@ -354,11 +398,13 @@ class LocalStore {
       : this.state.missionHistory.some((item) => item.missionId === mission.id);
 
     if (alreadyCompleted) {
+      const profile = this.state.profiles.find((p) => p.id === input.profileId);
       return {
         awarded: false,
         alreadyCompleted: true,
-        profilePowerLevel:
-          this.state.profiles.find((p) => p.id === input.profileId)?.powerLevel ?? 0,
+        profileRewardPoints: profile?.rewardPoints ?? 0,
+        profileXpPoints: profile?.xpPoints ?? profile?.powerLevel ?? 0,
+        profilePowerLevel: profile?.powerLevel ?? 0,
         squadPowerCurrent: this.state.squad.squadPowerCurrent,
         squadPowerMax: this.state.squad.squadPowerMax,
       };
@@ -395,7 +441,9 @@ class LocalStore {
       profile.lastStreakDate = nextStreak.lastStreakDate;
     }
 
-    profile.powerLevel += mission.powerValue;
+    profile.rewardPoints += mission.powerValue;
+    profile.xpPoints += mission.powerValue;
+    profile.powerLevel = profile.xpPoints;
     this.state.squad.squadPowerCurrent = clamp(
       this.state.squad.squadPowerCurrent + mission.powerValue,
       0,
@@ -413,6 +461,8 @@ class LocalStore {
     return {
       awarded: true,
       alreadyCompleted: false,
+      profileRewardPoints: profile.rewardPoints,
+      profileXpPoints: profile.xpPoints,
       profilePowerLevel: profile.powerLevel,
       squadPowerCurrent: this.state.squad.squadPowerCurrent,
       squadPowerMax: this.state.squad.squadPowerMax,
@@ -454,6 +504,8 @@ class LocalStore {
         undone: false,
         wasCompleted: false,
         insufficientUnspentPoints: false,
+        profileRewardPoints: profile.rewardPoints,
+        profileXpPoints: profile.xpPoints,
         profilePowerLevel: profile.powerLevel,
         squadPowerCurrent: this.state.squad.squadPowerCurrent,
         squadPowerMax: this.state.squad.squadPowerMax,
@@ -462,7 +514,7 @@ class LocalStore {
 
     const undoPolicy = evaluateUndoEligibility({
       force: input.force,
-      profilePowerLevel: profile.powerLevel,
+      profileRewardPoints: profile.rewardPoints,
       pointsAwarded: target.pointsAwarded,
     });
 
@@ -472,6 +524,8 @@ class LocalStore {
         wasCompleted: true,
         insufficientUnspentPoints: undoPolicy.insufficientUnspentPoints,
         pointsRequiredToUndo: undoPolicy.pointsRequiredToUndo,
+        profileRewardPoints: profile.rewardPoints,
+        profileXpPoints: profile.xpPoints,
         profilePowerLevel: profile.powerLevel,
         squadPowerCurrent: this.state.squad.squadPowerCurrent,
         squadPowerMax: this.state.squad.squadPowerMax,
@@ -482,7 +536,9 @@ class LocalStore {
       (item) => item.id !== target.id,
     );
 
-    profile.powerLevel = Math.max(0, profile.powerLevel - target.pointsAwarded);
+    profile.rewardPoints = Math.max(0, profile.rewardPoints - target.pointsAwarded);
+    profile.xpPoints = Math.max(0, profile.xpPoints - target.pointsAwarded);
+    profile.powerLevel = profile.xpPoints;
     this.state.squad.squadPowerCurrent = clamp(
       this.state.squad.squadPowerCurrent - target.pointsAwarded,
       0,
@@ -495,6 +551,8 @@ class LocalStore {
       undone: true,
       wasCompleted: true,
       insufficientUnspentPoints: false,
+      profileRewardPoints: profile.rewardPoints,
+      profileXpPoints: profile.xpPoints,
       profilePowerLevel: profile.powerLevel,
       squadPowerCurrent: this.state.squad.squadPowerCurrent,
       squadPowerMax: this.state.squad.squadPowerMax,
@@ -573,7 +631,7 @@ class LocalStore {
   }
 
   getRewards(): Reward[] {
-    return [...this.state.rewards].sort((a, b) => a.sortOrder - b.sortOrder);
+    return [...this.state.rewards].sort(compareRewardsByCost);
   }
 
   createReward(input: CreateRewardInput): Reward {
@@ -582,6 +640,8 @@ class LocalStore {
       title: input.title,
       description: input.description,
       pointCost: input.pointCost,
+      targetDaysToEarn: input.targetDaysToEarn ?? null,
+      minDaysBetweenClaims: input.minDaysBetweenClaims ?? null,
       isActive: input.isActive ?? true,
       sortOrder: input.sortOrder ?? this.state.rewards.length + 1,
     };
@@ -599,6 +659,12 @@ class LocalStore {
     if (input.title !== undefined) reward.title = input.title;
     if (input.description !== undefined) reward.description = input.description;
     if (input.pointCost !== undefined) reward.pointCost = input.pointCost;
+    if (input.targetDaysToEarn !== undefined) {
+      reward.targetDaysToEarn = input.targetDaysToEarn;
+    }
+    if (input.minDaysBetweenClaims !== undefined) {
+      reward.minDaysBetweenClaims = input.minDaysBetweenClaims;
+    }
     if (input.isActive !== undefined) reward.isActive = input.isActive;
     if (input.sortOrder !== undefined) reward.sortOrder = input.sortOrder;
     this.saveToDisk();
@@ -615,7 +681,7 @@ class LocalStore {
     this.saveToDisk();
   }
 
-  claimReward(input: ClaimRewardInput): ClaimRewardResult {
+  async claimReward(input: ClaimRewardInput): Promise<ClaimRewardResult> {
     const reward = this.state.rewards.find((item) => item.id === input.rewardId);
     if (!reward || !reward.isActive) {
       throw new Error("Reward unavailable");
@@ -626,35 +692,77 @@ class LocalStore {
       throw new Error("Profile not found");
     }
 
-    if (profile.powerLevel < reward.pointCost) {
+    const claimTime = input.claimedAt ? new Date(input.claimedAt) : new Date();
+    if (Number.isNaN(claimTime.getTime())) {
+      throw new Error("Invalid claim timestamp");
+    }
+
+    const cooldown = getRewardCooldownStatus({
+      reward,
+      claims: this.state.rewardClaims.filter((claim) => claim.profileId === input.profileId),
+      asOf: claimTime,
+      timeZone: env.appTimeZone,
+    });
+    if (cooldown.cooldownActive) {
       return {
         claimed: false,
-        insufficientPoints: true,
+        insufficientPoints: false,
         alreadyClaimed: false,
+        cooldownActive: true,
+        nextClaimDate: cooldown.nextClaimDate,
+        cooldownDaysRemaining: cooldown.cooldownDaysRemaining,
+        newRewardPoints: profile.rewardPoints,
+        newXpPoints: profile.xpPoints,
         newPowerLevel: profile.powerLevel,
         reward,
       };
     }
 
-    profile.powerLevel -= reward.pointCost;
-    const claimedAt = new Date().toISOString();
+    if (profile.rewardPoints < reward.pointCost) {
+      return {
+        claimed: false,
+        insufficientPoints: true,
+        alreadyClaimed: false,
+        cooldownActive: false,
+        nextClaimDate: cooldown.nextClaimDate,
+        cooldownDaysRemaining: cooldown.cooldownDaysRemaining,
+        newRewardPoints: profile.rewardPoints,
+        newXpPoints: profile.xpPoints,
+        newPowerLevel: profile.powerLevel,
+        reward,
+      };
+    }
+
+    profile.rewardPoints -= reward.pointCost;
+    profile.powerLevel = profile.xpPoints;
+    const claimedAt = claimTime.toISOString();
+    const existingStickerConceptIds = this.state.rewardClaims
+      .filter((claim) => claim.profileId === input.profileId)
+      .map((claim) => claim.stickerConceptId)
+      .filter((value): value is string => typeof value === "string" && value.length > 0);
+    const art = await generateRewardClaimArt({
+      rewardTitle: reward.title,
+      rewardDescription: reward.description,
+      heroName: profile.heroName,
+      claimedAt,
+      existingStickerConceptIds,
+    });
     this.state.rewardClaims.push({
       id: randomUUID(),
       profileId: input.profileId,
       rewardId: input.rewardId,
       pointCost: reward.pointCost,
       claimedAt,
-      imageUrl: generateRewardStickerDataUrl({
-        rewardTitle: reward.title,
-        heroName: profile.heroName,
-        claimedAt,
-      }),
+      imageUrl: art.imageUrl,
+      stickerType: art.stickerType,
+      stickerConceptId: art.stickerConceptId,
+      stickerPromptSeed: art.stickerPromptSeed,
     });
     this.pushNotification(
       input.profileId,
       "reward_claimed",
       "Reward Claimed",
-      `${profile.heroName} claimed "${reward.title}" (-${reward.pointCost} power).`,
+      `${profile.heroName} claimed "${reward.title}" (-${reward.pointCost} reward points).`,
     );
     this.saveToDisk();
 
@@ -662,6 +770,11 @@ class LocalStore {
       claimed: true,
       insufficientPoints: false,
       alreadyClaimed: false,
+      cooldownActive: false,
+      nextClaimDate: null,
+      cooldownDaysRemaining: null,
+      newRewardPoints: profile.rewardPoints,
+      newXpPoints: profile.xpPoints,
       newPowerLevel: profile.powerLevel,
       reward,
     };
@@ -681,26 +794,31 @@ class LocalStore {
       return {
         returned: false,
         restoredPoints: 0,
+        newRewardPoints: profile.rewardPoints,
+        newXpPoints: profile.xpPoints,
         newPowerLevel: profile.powerLevel,
       };
     }
 
     const claim = this.state.rewardClaims[claimIndex];
     this.state.rewardClaims.splice(claimIndex, 1);
-    profile.powerLevel += claim.pointCost;
+    profile.rewardPoints += claim.pointCost;
+    profile.powerLevel = profile.xpPoints;
     const rewardTitle =
       this.state.rewards.find((item) => item.id === claim.rewardId)?.title ?? "a reward";
     this.pushNotification(
       input.profileId,
       "reward_returned",
       "Reward Returned",
-      `${profile.heroName} gave back "${rewardTitle}" (+${claim.pointCost} power).`,
+      `${profile.heroName} gave back "${rewardTitle}" (+${claim.pointCost} reward points).`,
     );
     this.saveToDisk();
 
     return {
       returned: true,
       restoredPoints: claim.pointCost,
+      newRewardPoints: profile.rewardPoints,
+      newXpPoints: profile.xpPoints,
       newPowerLevel: profile.powerLevel,
     };
   }
@@ -720,6 +838,9 @@ class LocalStore {
               this.state.profiles.find((profile) => profile.id === claim.profileId)?.heroName ??
               "Hero",
             claimedAt: claim.claimedAt,
+            stickerType: claim.stickerType,
+            stickerConceptId: claim.stickerConceptId,
+            stickerPromptSeed: claim.stickerPromptSeed,
           });
         return {
           id: claim.id,
@@ -729,6 +850,9 @@ class LocalStore {
           pointCost: claim.pointCost,
           claimedAt: claim.claimedAt,
           imageUrl,
+          stickerType: claim.stickerType,
+          stickerConceptId: claim.stickerConceptId,
+          stickerPromptSeed: claim.stickerPromptSeed,
         };
       });
   }
@@ -807,6 +931,144 @@ class LocalStore {
       .map(([date, missions]) => ({ date, missions }));
   }
 
+  createMissionBackfill(input: CreateMissionBackfillInput): CreateMissionBackfillResult {
+    if (!isValidLocalDateString(input.localDate)) {
+      throw new Error("Invalid localDate");
+    }
+    if (input.localDate >= this.state.squad.cycleDate) {
+      throw new Error("Backfill date must be before today");
+    }
+
+    const mission = this.state.missions.find(
+      (item) =>
+        item.id === input.missionId &&
+        item.profileId === input.profileId &&
+        item.isActive &&
+        item.deletedAt === null,
+    );
+    if (!mission) {
+      throw new Error("Mission not found or inactive");
+    }
+
+    const duplicate = this.state.missionHistory.find(
+      (row) =>
+        row.missionId === input.missionId && row.completedOnLocalDate === input.localDate,
+    );
+    if (duplicate) {
+      throw new Error("Backfill already exists for this mission and date");
+    }
+
+    const completedAt = new Date().toISOString();
+    const row: MissionHistoryRow = {
+      id: randomUUID(),
+      missionId: mission.id,
+      profileId: input.profileId,
+      completedAt,
+      completedOnLocalDate: input.localDate,
+      clientRequestId: buildMissionBackfillClientRequestId({
+        profileId: input.profileId,
+        missionId: input.missionId,
+        localDate: input.localDate,
+      }),
+      pointsAwarded: mission.powerValue,
+    };
+    this.state.missionHistory.push(row);
+
+    const profile = this.state.profiles.find((item) => item.id === input.profileId);
+    if (!profile) {
+      throw new Error("Profile not found");
+    }
+
+    profile.rewardPoints += mission.powerValue;
+    profile.xpPoints += mission.powerValue;
+    profile.powerLevel = profile.xpPoints;
+    this.state.squad.squadPowerCurrent = clamp(
+      this.state.squad.squadPowerCurrent + mission.powerValue,
+      0,
+      this.state.squad.squadPowerMax,
+    );
+    this.recomputeProfileStreak(input.profileId);
+    this.saveToDisk();
+
+    return {
+      entry: {
+        id: row.id,
+        profileId: row.profileId,
+        missionId: row.missionId,
+        missionTitle: mission.title,
+        localDate: row.completedOnLocalDate,
+        pointsAwarded: row.pointsAwarded,
+        createdAt: row.completedAt,
+      },
+      profileRewardPoints: profile.rewardPoints,
+      profileXpPoints: profile.xpPoints,
+      profilePowerLevel: profile.powerLevel,
+      squadPowerCurrent: this.state.squad.squadPowerCurrent,
+      squadPowerMax: this.state.squad.squadPowerMax,
+    };
+  }
+
+  getMissionBackfills(profileId: string): MissionBackfillEntry[] {
+    const missionTitleById = new Map(this.state.missions.map((mission) => [mission.id, mission.title]));
+    return this.state.missionHistory
+      .filter(
+        (row) =>
+          row.profileId === profileId &&
+          isMissionBackfillClientRequestId(row.clientRequestId),
+      )
+      .sort((a, b) => {
+        if (a.completedOnLocalDate !== b.completedOnLocalDate) {
+          return a.completedOnLocalDate < b.completedOnLocalDate ? 1 : -1;
+        }
+        return b.completedAt.localeCompare(a.completedAt);
+      })
+      .map((row) => ({
+        id: row.id,
+        profileId: row.profileId,
+        missionId: row.missionId,
+        missionTitle: missionTitleById.get(row.missionId) ?? "Mission",
+        localDate: row.completedOnLocalDate,
+        pointsAwarded: row.pointsAwarded,
+        createdAt: row.completedAt,
+      }));
+  }
+
+  deleteMissionBackfill(id: string): DeleteMissionBackfillResult {
+    const row = this.state.missionHistory.find((item) => item.id === id);
+    if (!row) {
+      throw new Error("Backfill entry not found");
+    }
+    if (!isMissionBackfillClientRequestId(row.clientRequestId)) {
+      throw new Error("Only parent backfills can be removed");
+    }
+
+    const profile = this.state.profiles.find((item) => item.id === row.profileId);
+    if (!profile) {
+      throw new Error("Profile not found");
+    }
+
+    this.state.missionHistory = this.state.missionHistory.filter((item) => item.id !== id);
+    profile.rewardPoints = Math.max(0, profile.rewardPoints - row.pointsAwarded);
+    profile.xpPoints = Math.max(0, profile.xpPoints - row.pointsAwarded);
+    profile.powerLevel = profile.xpPoints;
+    this.state.squad.squadPowerCurrent = clamp(
+      this.state.squad.squadPowerCurrent - row.pointsAwarded,
+      0,
+      this.state.squad.squadPowerMax,
+    );
+    this.recomputeProfileStreak(profile.id);
+    this.saveToDisk();
+
+    return {
+      removed: true,
+      profileRewardPoints: profile.rewardPoints,
+      profileXpPoints: profile.xpPoints,
+      profilePowerLevel: profile.powerLevel,
+      squadPowerCurrent: this.state.squad.squadPowerCurrent,
+      squadPowerMax: this.state.squad.squadPowerMax,
+    };
+  }
+
   getNotifications(limit = 100): NotificationEvent[] {
     return [...this.state.notifications]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -841,6 +1103,8 @@ class LocalStore {
       avatarUrl: input.avatarUrl,
       uiMode: input.uiMode,
       heroCardObjectPosition: toHeroCardObjectPosition(input.heroCardObjectPosition),
+      rewardPoints: 0,
+      xpPoints: 0,
       powerLevel: 0,
       currentStreak: 0,
       lastStreakDate: null,

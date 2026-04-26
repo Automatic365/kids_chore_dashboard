@@ -7,9 +7,10 @@ import {
 
 describe("board-rules", () => {
   it("detects level increases across thresholds", () => {
-    expect(didHeroLevelIncrease(40, 50)).toBe(true);
-    expect(didHeroLevelIncrease(55, 149)).toBe(false);
-    expect(didHeroLevelIncrease(149, 150)).toBe(true);
+    expect(didHeroLevelIncrease(40, 75)).toBe(true);
+    expect(didHeroLevelIncrease(90, 179)).toBe(false);
+    expect(didHeroLevelIncrease(2199, 2200)).toBe(true);
+    expect(didHeroLevelIncrease(2500, 3750)).toBe(false);
   });
 
   it("only triggers squad win when a configured goal is crossed", () => {

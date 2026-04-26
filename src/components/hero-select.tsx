@@ -11,6 +11,7 @@ import { Profile } from "@/lib/types/domain";
 
 export function HeroSelect() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -23,6 +24,9 @@ export function HeroSelect() {
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
 
     return () => {
@@ -47,7 +51,25 @@ export function HeroSelect() {
         </p>
       ) : null}
 
-      {profiles.length === 0 && !error ? (
+      {loading && !error ? (
+        <section className="grid flex-1 gap-4 md:grid-cols-2 md:gap-6">
+          {[0, 1].map((slot) => (
+            <article
+              key={slot}
+              className="comic-card min-h-[340px] animate-pulse overflow-hidden"
+            >
+              <div className="relative h-full min-h-[340px] w-full bg-[var(--hero-blue)]/30">
+                <div className="h-full w-full bg-gradient-to-br from-white/10 via-white/0 to-black/10" />
+                <div className="absolute inset-x-0 bottom-0 border-t-2 border-black bg-[var(--hero-panel)] px-4 py-3">
+                  <div className="h-7 w-2/3 rounded bg-white/20" />
+                  <div className="mt-2 h-4 w-1/2 rounded bg-white/15" />
+                  <div className="mt-2 h-3 w-1/3 rounded bg-white/10" />
+                </div>
+              </div>
+            </article>
+          ))}
+        </section>
+      ) : profiles.length === 0 && !error ? (
         <section className="mx-auto grid w-full max-w-2xl flex-1 place-items-center">
           <article className="comic-card w-full max-w-xl p-8 text-center">
             <p className="mb-3 text-7xl">🦸‍♀️</p>
@@ -115,7 +137,7 @@ export function HeroSelect() {
                     className="mt-1 text-sm font-black uppercase leading-tight"
                     style={{ color: getHeroLevel(profile.powerLevel).color }}
                   >
-                    Level: {getHeroLevel(profile.powerLevel).name}
+                    Level: {getHeroLevel(profile.powerLevel).displayName}
                   </p>
                   {profile.currentStreak > 0 ? (
                     <p className="mt-1 text-xs font-bold uppercase leading-tight text-[var(--hero-yellow)]">

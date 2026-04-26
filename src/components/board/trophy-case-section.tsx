@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { AvatarDisplay } from "@/components/avatar-display";
 import { RewardClaimEntry } from "@/lib/types/domain";
 
@@ -20,6 +22,8 @@ export function TrophyCaseSection({
   onReturn,
   returningClaimById,
 }: TrophyCaseSectionProps) {
+  const [selectedClaim, setSelectedClaim] = useState<RewardClaimEntry | null>(null);
+
   return (
     <section className="mt-4 rounded-2xl border-4 border-black bg-[var(--hero-blue)] p-4 text-white shadow-[6px_6px_0_#000]">
       <div className="mb-2 flex items-center justify-between">
@@ -49,7 +53,8 @@ export function TrophyCaseSection({
             {rewardClaims.map((claim) => (
               <article
                 key={claim.id}
-                className="rounded-lg border-2 border-black bg-white p-1.5 text-black"
+                className="cursor-pointer rounded-lg border-2 border-black bg-white p-1.5 text-black transition-transform hover:-translate-y-0.5"
+                onClick={() => setSelectedClaim(claim)}
               >
                 <AvatarDisplay
                   avatarUrl={claim.imageUrl ?? ""}
@@ -64,7 +69,10 @@ export function TrophyCaseSection({
                 </p>
                 <button
                   type="button"
-                  onClick={() => void onReturn(claim)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void onReturn(claim);
+                  }}
                   disabled={Boolean(returningClaimById[claim.id])}
                   className="touch-target mt-1 w-full rounded-md border-2 border-black bg-amber-300 px-1 py-1 text-[9px] font-black uppercase text-black disabled:opacity-60"
                 >
@@ -74,6 +82,45 @@ export function TrophyCaseSection({
             ))}
           </div>
         )
+      ) : null}
+      {selectedClaim ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setSelectedClaim(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl border-4 border-black bg-[var(--hero-panel)] p-4 text-white shadow-[10px_10px_0_#000]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-black uppercase text-[var(--hero-yellow)]">
+                  {selectedClaim.title}
+                </h3>
+                <p className="mt-1 text-xs font-bold uppercase text-white/80">
+                  Claimed {new Date(selectedClaim.claimedAt).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedClaim(null)}
+                className="touch-target rounded-xl border-2 border-black bg-white px-3 py-2 text-xs font-black uppercase text-black"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 rounded-2xl border-4 border-black bg-white p-3">
+              <AvatarDisplay
+                avatarUrl={selectedClaim.imageUrl ?? ""}
+                alt={`${selectedClaim.title} full sticker`}
+                className="mx-auto aspect-[11/13] w-full max-w-[320px] rounded-2xl border-4 border-black bg-[var(--hero-blue)]/10 object-contain"
+              />
+            </div>
+            <p className="mt-3 text-sm font-bold text-white/90">
+              Tap outside this card to close.
+            </p>
+          </div>
+        </div>
       ) : null}
     </section>
   );

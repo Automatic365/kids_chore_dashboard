@@ -5,7 +5,8 @@ interface ParentPinGateProps {
   pinError: string | null;
   onPinChange: (value: string) => void;
   onCancel: () => void;
-  onSubmit: () => void | Promise<void>;
+  onDashboardSubmit: () => void | Promise<void>;
+  onBoardEditSubmit: () => void | Promise<void>;
 }
 
 export function ParentPinGate({
@@ -13,13 +14,14 @@ export function ParentPinGate({
   pinError,
   onPinChange,
   onCancel,
-  onSubmit,
+  onDashboardSubmit,
+  onBoardEditSubmit,
 }: ParentPinGateProps) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
       <div className="w-full max-w-sm rounded-2xl border-4 border-black bg-white p-5 text-black shadow-[8px_8px_0_#000]">
         <h2 className="text-2xl font-black uppercase">Mission Command PIN</h2>
-        <p className="mt-1 text-sm">Parents only.</p>
+        <p className="mt-1 text-sm">Parents only. Open the dashboard or unlock board edit mode.</p>
 
         <input
           type="password"
@@ -42,10 +44,17 @@ export function ParentPinGate({
           </button>
           <button
             type="button"
-            onClick={() => void onSubmit()}
+            onClick={() => void onBoardEditSubmit()}
+            className="flex-1 rounded-xl border-2 border-black bg-[var(--hero-yellow)] px-3 py-2 font-bold uppercase text-black"
+          >
+            Edit Board
+          </button>
+          <button
+            type="button"
+            onClick={() => void onDashboardSubmit()}
             className="flex-1 rounded-xl border-2 border-black bg-[var(--hero-red)] px-3 py-2 font-bold uppercase text-white"
           >
-            Enter
+            Dashboard
           </button>
         </div>
       </div>

@@ -38,12 +38,17 @@ describe("POST /api/public/claim-reward", () => {
     claimRewardMock.mockResolvedValue({
       claimed: true,
       insufficientPoints: false,
+      cooldownActive: false,
+      nextClaimDate: null,
+      cooldownDaysRemaining: null,
       newPowerLevel: 10,
       reward: {
         id: "r1",
         title: "Hero Sticker",
         description: "A shiny sticker",
         pointCost: 25,
+        targetDaysToEarn: 2,
+        minDaysBetweenClaims: null,
         isActive: true,
         sortOrder: 1,
       },

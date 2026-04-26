@@ -69,7 +69,7 @@ describe("local store completion rules", () => {
     expect(undo.profilePowerLevel).toBe(0);
   });
 
-  it("blocks undo when mission points have already been spent on rewards", () => {
+  it("blocks undo when mission points have already been spent on rewards", async () => {
     resetLocalStoreForTests();
     const store = getLocalStore();
 
@@ -92,12 +92,14 @@ describe("local store completion rules", () => {
       clientCompletedAt: new Date().toISOString(),
     });
 
-    const claim = store.claimReward({
+    const claim = await store.claimReward({
       profileId: "captain-alpha",
       rewardId: "r1",
     });
     expect(claim.claimed).toBe(true);
-    expect(claim.newPowerLevel).toBe(5);
+    expect(claim.newRewardPoints).toBe(10);
+    expect(claim.newXpPoints).toBe(30);
+    expect(claim.newPowerLevel).toBe(30);
 
     const undo = store.uncompleteMission({
       missionId: "m2",
@@ -108,10 +110,12 @@ describe("local store completion rules", () => {
     expect(undo.wasCompleted).toBe(true);
     expect(undo.insufficientUnspentPoints).toBe(true);
     expect(undo.pointsRequiredToUndo).toBe(12);
-    expect(undo.profilePowerLevel).toBe(5);
+    expect(undo.profileRewardPoints).toBe(10);
+    expect(undo.profileXpPoints).toBe(30);
+    expect(undo.profilePowerLevel).toBe(30);
   });
 
-  it("allows parent force undo even when unspent points are insufficient", () => {
+  it("allows parent force undo even when unspent points are insufficient", async () => {
     resetLocalStoreForTests();
     const store = getLocalStore();
 
@@ -133,7 +137,7 @@ describe("local store completion rules", () => {
       clientRequestId: "req-force-3",
       clientCompletedAt: new Date().toISOString(),
     });
-    store.claimReward({
+    await store.claimReward({
       profileId: "captain-alpha",
       rewardId: "r1",
     });
@@ -146,10 +150,12 @@ describe("local store completion rules", () => {
 
     expect(undo.undone).toBe(true);
     expect(undo.wasCompleted).toBe(true);
-    expect(undo.profilePowerLevel).toBe(0);
+    expect(undo.profileRewardPoints).toBe(0);
+    expect(undo.profileXpPoints).toBe(18);
+    expect(undo.profilePowerLevel).toBe(18);
   });
 
-  it("allows undo after giving back a claimed reward", () => {
+  it("allows undo after giving back a claimed reward", async () => {
     resetLocalStoreForTests();
     const store = getLocalStore();
 
@@ -172,12 +178,14 @@ describe("local store completion rules", () => {
       clientCompletedAt: new Date().toISOString(),
     });
 
-    const claim = store.claimReward({
+    const claim = await store.claimReward({
       profileId: "captain-alpha",
       rewardId: "r1",
     });
     expect(claim.claimed).toBe(true);
-    expect(claim.newPowerLevel).toBe(5);
+    expect(claim.newRewardPoints).toBe(10);
+    expect(claim.newXpPoints).toBe(30);
+    expect(claim.newPowerLevel).toBe(30);
 
     const claims = store.getRewardClaims("captain-alpha");
     const returned = store.returnReward({
@@ -185,6 +193,8 @@ describe("local store completion rules", () => {
       rewardClaimId: claims[0]!.id,
     });
     expect(returned.returned).toBe(true);
+    expect(returned.newRewardPoints).toBe(30);
+    expect(returned.newXpPoints).toBe(30);
     expect(returned.newPowerLevel).toBe(30);
 
     const undo = store.uncompleteMission({
@@ -192,6 +202,8 @@ describe("local store completion rules", () => {
       profileId: "captain-alpha",
     });
     expect(undo.undone).toBe(true);
+    expect(undo.profileRewardPoints).toBe(18);
+    expect(undo.profileXpPoints).toBe(18);
     expect(undo.profilePowerLevel).toBe(18);
   });
 
@@ -250,16 +262,88 @@ describe("local store completion rules", () => {
     expect(profile?.lastStreakDate).toBe("2099-01-02");
   });
 
-  it("claims rewards only when profile has enough power", () => {
+  it("creates mission backfill for past date without marking today complete", () => {
     resetLocalStoreForTests();
     const store = getLocalStore();
 
-    const fail = store.claimReward({
+    store.resetDaily("2099-01-03");
+    const result = store.createMissionBackfill({
+      profileId: "captain-alpha",
+      missionId: "m1",
+      localDate: "2099-01-02",
+    });
+
+    expect(result.entry.localDate).toBe("2099-01-02");
+    expect(result.profileRewardPoints).toBe(10);
+    expect(result.profileXpPoints).toBe(10);
+
+    const missionToday = store
+      .getMissions("captain-alpha")
+      .find((mission) => mission.id === "m1");
+    expect(missionToday?.completedToday).toBe(false);
+  });
+
+  it("rejects duplicate mission backfills for same mission and date", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    store.resetDaily("2099-01-03");
+    store.createMissionBackfill({
+      profileId: "captain-alpha",
+      missionId: "m1",
+      localDate: "2099-01-02",
+    });
+
+    expect(() =>
+      store.createMissionBackfill({
+        profileId: "captain-alpha",
+        missionId: "m1",
+        localDate: "2099-01-02",
+      }),
+    ).toThrow(/already exists/i);
+  });
+
+  it("recomputes streak after backfill add/remove and reverses points", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    store.resetDaily("2099-01-03");
+    const first = store.createMissionBackfill({
+      profileId: "captain-alpha",
+      missionId: "m1",
+      localDate: "2099-01-01",
+    });
+    const second = store.createMissionBackfill({
+      profileId: "captain-alpha",
+      missionId: "m2",
+      localDate: "2099-01-02",
+    });
+
+    let profile = store.getProfiles().find((item) => item.id === "captain-alpha");
+    expect(profile?.currentStreak).toBe(2);
+    expect(profile?.lastStreakDate).toBe("2099-01-02");
+
+    const removed = store.deleteMissionBackfill(second.entry.id);
+    expect(removed.removed).toBe(true);
+    expect(removed.profileRewardPoints).toBe(first.profileRewardPoints);
+    expect(removed.profileXpPoints).toBe(first.profileXpPoints);
+
+    profile = store.getProfiles().find((item) => item.id === "captain-alpha");
+    expect(profile?.currentStreak).toBe(1);
+    expect(profile?.lastStreakDate).toBe("2099-01-01");
+  });
+
+  it("claims rewards only when profile has enough power", async () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    const fail = await store.claimReward({
       profileId: "captain-alpha",
       rewardId: "r1",
     });
     expect(fail.claimed).toBe(false);
     expect(fail.insufficientPoints).toBe(true);
+    expect(fail.cooldownActive).toBe(false);
 
     store.completeMission({
       missionId: "m1",
@@ -280,23 +364,25 @@ describe("local store completion rules", () => {
       clientCompletedAt: new Date().toISOString(),
     });
 
-    const success = store.claimReward({
+    const success = await store.claimReward({
       profileId: "captain-alpha",
       rewardId: "r1",
     });
     expect(success.claimed).toBe(true);
     expect(success.insufficientPoints).toBe(false);
+    expect(success.cooldownActive).toBe(false);
     expect(success.newPowerLevel).toBeGreaterThanOrEqual(0);
 
     const claims = store.getRewardClaims("captain-alpha");
     expect(claims.length).toBe(1);
-    expect(claims[0]?.title).toBe("Hero Sticker");
+    expect(claims[0]?.title).toBe("10 Extra Minutes of TV");
     expect(claims[0]?.imageUrl?.startsWith("data:image/svg+xml")).toBe(true);
   });
 
-  it("allows claiming the same reward more than once", () => {
+  it("allows claiming the same reward more than once", async () => {
     resetLocalStoreForTests();
     const store = getLocalStore();
+    store.updateReward("r1", { minDaysBetweenClaims: null });
 
     store.completeMission({
       missionId: "m1",
@@ -336,11 +422,11 @@ describe("local store completion rules", () => {
       clientCompletedAt: new Date().toISOString(),
     });
 
-    const first = store.claimReward({
+    const first = await store.claimReward({
       profileId: "captain-alpha",
       rewardId: "r1",
     });
-    const second = store.claimReward({
+    const second = await store.claimReward({
       profileId: "captain-alpha",
       rewardId: "r1",
     });
@@ -351,6 +437,79 @@ describe("local store completion rules", () => {
 
     const claims = store.getRewardClaims("captain-alpha");
     expect(claims.length).toBe(2);
+  });
+
+  it("blocks reward claims while the reward cooldown is active", async () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    store.updateReward("r1", { pointCost: 10, minDaysBetweenClaims: 10 });
+
+    store.completeMission({
+      missionId: "m1",
+      profileId: "captain-alpha",
+      clientRequestId: "req-cooldown-1",
+      clientCompletedAt: new Date().toISOString(),
+    });
+
+    const first = await store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r1",
+    });
+    const second = await store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r1",
+    });
+
+    expect(first.claimed).toBe(true);
+    expect(second.claimed).toBe(false);
+    expect(second.cooldownActive).toBe(true);
+    expect(second.cooldownDaysRemaining).toBe(10);
+    expect(second.nextClaimDate).toBeTruthy();
+  });
+
+  it("generates unique sticker concepts per hero until the pool is exhausted", async () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    for (let day = 1; day <= 3; day += 1) {
+      store.resetDaily(`2099-01-0${day}`);
+      store.completeMission({
+        missionId: "m1",
+        profileId: "captain-alpha",
+        clientRequestId: `req-sticker-${day}-1`,
+        clientCompletedAt: new Date().toISOString(),
+      });
+      store.completeMission({
+        missionId: "m2",
+        profileId: "captain-alpha",
+        clientRequestId: `req-sticker-${day}-2`,
+        clientCompletedAt: new Date().toISOString(),
+      });
+      store.completeMission({
+        missionId: "m3",
+        profileId: "captain-alpha",
+        clientRequestId: `req-sticker-${day}-3`,
+        clientCompletedAt: new Date().toISOString(),
+      });
+    }
+
+    await store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r6",
+    });
+    await store.claimReward({
+      profileId: "captain-alpha",
+      rewardId: "r6",
+    });
+
+    const claims = store.getRewardClaims("captain-alpha");
+    expect(claims).toHaveLength(2);
+    expect(claims[0]?.stickerConceptId).toBeTruthy();
+    expect(claims[1]?.stickerConceptId).toBeTruthy();
+    expect(claims[0]?.stickerConceptId).not.toBe(claims[1]?.stickerConceptId);
+    expect(["vehicle", "companion"]).toContain(claims[0]?.stickerType);
+    expect(["vehicle", "companion"]).toContain(claims[1]?.stickerType);
   });
 
   it("defaults hero card focal point to center and updates it", () => {
