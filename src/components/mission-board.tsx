@@ -60,6 +60,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
     levelUpName,
     setShowPinGate,
     dismissSquadWin,
+    redeemSquadGoalAction,
     dismissLevelUp,
     completeMissionAction,
     undoMissionAction,
@@ -158,6 +159,7 @@ export function MissionBoard({ profileId }: MissionBoardProps) {
         onLongPressEnd={stopLongPress}
         showSquadWin={showSquadWin}
         onDismissSquadWin={dismissSquadWin}
+        onRedeemSquadGoal={redeemSquadGoalAction}
       />
 
       {profile.uiMode === "text" && profile.rewardPoints >= SECRET_HERO_CODE_THRESHOLD ? (

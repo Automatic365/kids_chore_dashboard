@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CSSProperties } from "react";
+import { CSSProperties, useState } from "react";
 
 import { getHeroLevelProgress, getStreakBadge } from "@/lib/hero-levels";
 import { Profile, SquadState } from "@/lib/types/domain";
@@ -27,6 +27,7 @@ interface SquadSectionProps {
   onLongPressEnd: () => void;
   showSquadWin: boolean;
   onDismissSquadWin: () => void;
+  onRedeemSquadGoal: () => Promise<void>;
 }
 
 const STAR_COLORS = [
@@ -66,8 +67,19 @@ export function SquadSection({
   onLongPressEnd,
   showSquadWin,
   onDismissSquadWin,
+  onRedeemSquadGoal,
 }: SquadSectionProps) {
+  const [claiming, setClaiming] = useState(false);
   const levelProgress = getHeroLevelProgress(profile.powerLevel);
+
+  async function handleClaim() {
+    setClaiming(true);
+    try {
+      await onRedeemSquadGoal();
+    } finally {
+      setClaiming(false);
+    }
+  }
 
   return (
     <>
@@ -194,8 +206,18 @@ export function SquadSection({
           </p>
           {squad.goalCompletionCount > 0 ? (
             <p className="mt-1 text-xs font-black uppercase tracking-wide text-black/60">
-              ★ Completed {squad.goalCompletionCount}×
+              ★ Claimed {squad.goalCompletionCount}×
             </p>
+          ) : null}
+          {squad.squadPowerCurrent >= squad.squadGoal.targetPower ? (
+            <button
+              type="button"
+              onClick={handleClaim}
+              disabled={claiming}
+              className="mt-3 w-full rounded-2xl border-4 border-black bg-black px-4 py-3 text-base font-black uppercase text-[var(--hero-yellow)] shadow-[4px_4px_0_#555] transition active:scale-95 disabled:opacity-60"
+            >
+              {claiming ? "Claiming…" : "⭐ Claim Reward!"}
+            </button>
           ) : null}
         </section>
       ) : null}

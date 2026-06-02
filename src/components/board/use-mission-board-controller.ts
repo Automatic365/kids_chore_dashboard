@@ -14,6 +14,7 @@ import {
   fetchRewards,
   fetchSquadState,
   isRemoteApiEnabled,
+  redeemSquadGoal,
   returnReward,
   uncompleteMission,
   updateMission,
@@ -98,6 +99,7 @@ interface UseMissionBoardControllerResult {
   setShowPinGate: (show: boolean) => void;
   dismissSquadWin: () => void;
   dismissLevelUp: () => void;
+  redeemSquadGoalAction: () => Promise<void>;
   completeMissionAction: (mission: MissionWithState) => Promise<void>;
   undoMissionAction: (mission: MissionWithState) => Promise<void>;
   deleteMissionAction: (mission: MissionWithState) => Promise<void>;
@@ -979,6 +981,14 @@ export function useMissionBoardController(
     levelUpName,
     setShowPinGate,
     dismissSquadWin: () => setShowSquadWin(false),
+    redeemSquadGoalAction: async () => {
+      try {
+        await redeemSquadGoal();
+        await loadBoard();
+      } catch {
+        // silently fail — board will refresh on next poll anyway
+      }
+    },
     dismissLevelUp: () => {
       setShowLevelUp(false);
       setLevelUpName(null);
