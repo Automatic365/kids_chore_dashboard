@@ -25,6 +25,7 @@ import {
   localLogoutParent,
   localReturnReward,
   localRestoreMission,
+  localClaimSquadGoal,
   localRedeemSquadGoal,
   localSetSquadGoal,
   localMarkNotificationsRead,
@@ -603,6 +604,21 @@ export async function redeemSquadGoal(): Promise<SquadState> {
       return data.squad;
     },
     () => localRedeemSquadGoal(),
+  );
+}
+
+export async function claimSquadGoal(): Promise<SquadState> {
+  return withFallback(
+    async () => {
+      const response = await fetch("/api/public/redeem-squad-goal", { method: "POST" });
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as ErrorPayload;
+        throw new Error(getApiErrorMessage(err, "Failed to claim squad goal"));
+      }
+      const data = (await response.json()) as { squad: SquadState };
+      return data.squad;
+    },
+    () => localClaimSquadGoal(),
   );
 }
 

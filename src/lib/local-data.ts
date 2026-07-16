@@ -1454,6 +1454,25 @@ export async function localRedeemSquadGoal(): Promise<SquadState> {
   return next;
 }
 
+export async function localClaimSquadGoal(): Promise<SquadState> {
+  const db = await getDb();
+  const squad = await ensureCurrentCycle(db);
+  if (!squad.squadGoal) {
+    throw new Error("No squad goal is set");
+  }
+  if (squad.squadPowerCurrent < squad.squadGoal.targetPower) {
+    throw new Error("Squad goal not reached yet");
+  }
+
+  const next: SquadState = {
+    ...squad,
+    squadPowerCurrent: 0,
+    goalCompletionCount: (squad.goalCompletionCount ?? 0) + 1,
+  };
+  await setMetaValue(db, "squad", next);
+  return next;
+}
+
 export async function localLogoutParent(): Promise<void> {
   clearParentSession();
 }

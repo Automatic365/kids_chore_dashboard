@@ -4,6 +4,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "re
 
 import {
   claimReward,
+  claimSquadGoal,
   completeMission,
   deleteMission,
   fetchMissionHistory,
@@ -14,7 +15,6 @@ import {
   fetchRewards,
   fetchSquadState,
   isRemoteApiEnabled,
-  redeemSquadGoal,
   returnReward,
   uncompleteMission,
   updateMission,
@@ -983,10 +983,16 @@ export function useMissionBoardController(
     dismissSquadWin: () => setShowSquadWin(false),
     redeemSquadGoalAction: async () => {
       try {
-        await redeemSquadGoal();
+        const nextSquad = await claimSquadGoal();
+        setSquad(nextSquad);
+        setEffectText("SQUAD REWARD CLAIMED!");
+        window.setTimeout(() => setEffectText(null), 1200);
         await loadBoard();
-      } catch {
-        // silently fail — board will refresh on next poll anyway
+      } catch (error) {
+        reportError(error, { surface: "squad_goal_claim" });
+        setEffectText("CLAIM FAILED");
+        window.setTimeout(() => setEffectText(null), 1200);
+        await loadBoard();
       }
     },
     dismissLevelUp: () => {
