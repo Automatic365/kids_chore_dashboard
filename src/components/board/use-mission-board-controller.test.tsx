@@ -108,6 +108,7 @@ const squad: SquadState = {
   squadPowerMax: 100,
   cycleDate: "2026-04-26",
   squadGoal: null,
+  goalCompletionCount: 0,
 };
 
 function makeProfile(rewardPoints: number): Profile {

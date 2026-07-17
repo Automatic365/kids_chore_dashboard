@@ -16,7 +16,7 @@ test("simulated next day reopens recurring missions", async ({ page }) => {
     const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
     class MockDate extends RealDate {
-      constructor(...args: ConstructorParameters<typeof Date>) {
+      constructor(...args: [] | ConstructorParameters<typeof Date>) {
         if (args.length === 0) {
           super(RealDate.now() + ONE_DAY_MS);
           return;

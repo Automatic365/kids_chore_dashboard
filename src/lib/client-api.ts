@@ -74,6 +74,16 @@ export function isRemoteApiEnabled(): boolean {
   return publicEnv.useRemoteApi;
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function withFallback<T>(
   remote: () => Promise<T>,
   local: () => Promise<T>,
@@ -84,7 +94,14 @@ async function withFallback<T>(
 
   try {
     return await remote();
-  } catch {
+  } catch (error) {
+    // A 4xx is the server deliberately rejecting the request (auth,
+    // validation, business rules). Falling back to browser storage would
+    // "succeed" against state nobody reads in remote mode and hide the
+    // rejection, so only network failures and 5xx fall back.
+    if (error instanceof ApiError && error.status < 500) {
+      throw error;
+    }
     return local();
   }
 }
@@ -112,7 +129,7 @@ export async function fetchProfiles(): Promise<Profile[]> {
   return withFallback(
     async () => {
       const response = await fetch("/api/public/profiles", { cache: "no-store" });
-      if (!response.ok) throw new Error("Failed to load profiles");
+      if (!response.ok) throw new ApiError("Failed to load profiles", response.status);
       const data = (await response.json()) as { profiles: Profile[] };
       return data.profiles;
     },
@@ -126,7 +143,7 @@ export async function fetchMissions(profileId: string): Promise<MissionWithState
       const response = await fetch(`/api/public/missions?profileId=${profileId}`, {
         cache: "no-store",
       });
-      if (!response.ok) throw new Error("Failed to load missions");
+      if (!response.ok) throw new ApiError("Failed to load missions", response.status);
       const data = (await response.json()) as { missions: MissionWithState[] };
       return data.missions;
     },
@@ -138,7 +155,7 @@ export async function fetchSquadState(): Promise<SquadState> {
   return withFallback(
     async () => {
       const response = await fetch("/api/public/squad-state", { cache: "no-store" });
-      if (!response.ok) throw new Error("Failed to load squad state");
+      if (!response.ok) throw new ApiError("Failed to load squad state", response.status);
       const data = (await response.json()) as { squad: SquadState };
       return data.squad;
     },
@@ -164,7 +181,7 @@ export async function completeMission(payload: {
 
   if (!response.ok) {
     const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-    throw new Error(getApiErrorMessage(err, "Mission completion failed"));
+    throw new ApiError(getApiErrorMessage(err, "Mission completion failed"), response.status);
   }
 
   const data = (await response.json()) as { result: CompletionResult };
@@ -186,7 +203,7 @@ export async function uncompleteMission(
 
   if (!response.ok) {
     const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-    throw new Error(getApiErrorMessage(err, "Mission undo failed"));
+    throw new ApiError(getApiErrorMessage(err, "Mission undo failed"), response.status);
   }
 
   const data = (await response.json()) as { result: UncompletionResult };
@@ -221,7 +238,7 @@ export async function fetchParentDashboard(): Promise<ParentDashboardData> {
     async () => {
       const response = await fetch("/api/parent/dashboard", { cache: "no-store" });
       if (!response.ok) {
-        throw new Error(response.status === 401 ? "UNAUTHORIZED" : "Failed to load");
+        throw new ApiError(response.status === 401 ? "UNAUTHORIZED" : "Failed to load", response.status);
       }
       return (await response.json()) as ParentDashboardData;
     },
@@ -239,7 +256,7 @@ export async function createMission(input: CreateMissionInput): Promise<Mission>
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Mission creation failed"));
+        throw new ApiError(getApiErrorMessage(err, "Mission creation failed"), response.status);
       }
       const data = (await response.json()) as { mission: Mission };
       return data.mission;
@@ -261,7 +278,7 @@ export async function updateMission(
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Mission update failed"));
+        throw new ApiError(getApiErrorMessage(err, "Mission update failed"), response.status);
       }
       const data = (await response.json()) as { mission: Mission };
       return data.mission;
@@ -278,7 +295,7 @@ export async function deleteMission(id: string): Promise<void> {
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Mission delete failed"));
+        throw new ApiError(getApiErrorMessage(err, "Mission delete failed"), response.status);
       }
     },
     () => localDeleteMission(id),
@@ -293,7 +310,7 @@ export async function restoreMission(id: string): Promise<Mission> {
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Mission restore failed"));
+        throw new ApiError(getApiErrorMessage(err, "Mission restore failed"), response.status);
       }
       const data = (await response.json()) as { mission: Mission };
       return data.mission;
@@ -314,7 +331,7 @@ export async function awardSquadPower(
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Squad award failed"));
+        throw new ApiError(getApiErrorMessage(err, "Squad award failed"), response.status);
       }
       const data = (await response.json()) as { squad: SquadState };
       return data.squad;
@@ -333,7 +350,7 @@ export async function createProfile(input: CreateProfileInput): Promise<Profile>
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Profile creation failed"));
+        throw new ApiError(getApiErrorMessage(err, "Profile creation failed"), response.status);
       }
       const data = (await response.json()) as { profile: Profile };
       return data.profile;
@@ -355,7 +372,7 @@ export async function updateProfile(
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Profile update failed"));
+        throw new ApiError(getApiErrorMessage(err, "Profile update failed"), response.status);
       }
       const data = (await response.json()) as { profile: Profile };
       return data.profile;
@@ -372,7 +389,7 @@ export async function deleteProfile(id: string): Promise<void> {
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Profile delete failed"));
+        throw new ApiError(getApiErrorMessage(err, "Profile delete failed"), response.status);
       }
     },
     () => localDeleteProfile(id),
@@ -389,7 +406,7 @@ export async function changeParentPin(newPin: string): Promise<void> {
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "PIN change failed"));
+        throw new ApiError(getApiErrorMessage(err, "PIN change failed"), response.status);
       }
     },
     () => localChangeParentPin(newPin),
@@ -400,7 +417,7 @@ export async function fetchRewards(): Promise<Reward[]> {
   return withFallback(
     async () => {
       const response = await fetch("/api/public/rewards", { cache: "no-store" });
-      if (!response.ok) throw new Error("Failed to load rewards");
+      if (!response.ok) throw new ApiError("Failed to load rewards", response.status);
       const data = (await response.json()) as { rewards: Reward[] };
       return data.rewards;
     },
@@ -417,7 +434,7 @@ export async function fetchRewardClaims(
         `/api/public/reward-claims?profileId=${encodeURIComponent(profileId)}`,
         { cache: "no-store" },
       );
-      if (!response.ok) throw new Error("Failed to load reward claims");
+      if (!response.ok) throw new ApiError("Failed to load reward claims", response.status);
       const data = (await response.json()) as { claims: RewardClaimEntry[] };
       return data.claims;
     },
@@ -435,7 +452,7 @@ export async function createReward(input: CreateRewardInput): Promise<Reward> {
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Reward creation failed"));
+        throw new ApiError(getApiErrorMessage(err, "Reward creation failed"), response.status);
       }
       const data = (await response.json()) as { reward: Reward };
       return data.reward;
@@ -454,7 +471,7 @@ export async function updateReward(id: string, input: UpdateRewardInput): Promis
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Reward update failed"));
+        throw new ApiError(getApiErrorMessage(err, "Reward update failed"), response.status);
       }
       const data = (await response.json()) as { reward: Reward };
       return data.reward;
@@ -469,7 +486,7 @@ export async function deleteReward(id: string): Promise<void> {
       const response = await fetch(`/api/parent/rewards/${id}`, { method: "DELETE" });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Reward delete failed"));
+        throw new ApiError(getApiErrorMessage(err, "Reward delete failed"), response.status);
       }
     },
     () => localDeleteReward(id),
@@ -488,7 +505,7 @@ export async function claimReward(input: ClaimRewardInput): Promise<ClaimRewardR
   });
   if (!response.ok) {
     const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-    throw new Error(getApiErrorMessage(err, "Claim failed"));
+    throw new ApiError(getApiErrorMessage(err, "Claim failed"), response.status);
   }
   const data = (await response.json()) as { result: ClaimRewardResult };
   return data.result;
@@ -506,7 +523,7 @@ export async function createMissionBackfill(
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Mission backfill failed"));
+        throw new ApiError(getApiErrorMessage(err, "Mission backfill failed"), response.status);
       }
       const data = (await response.json()) as { result: CreateMissionBackfillResult };
       return data.result;
@@ -528,7 +545,7 @@ export async function fetchMissionBackfills(
       );
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Failed to load backfills"));
+        throw new ApiError(getApiErrorMessage(err, "Failed to load backfills"), response.status);
       }
       const data = (await response.json()) as { backfills: MissionBackfillEntry[] };
       return data.backfills;
@@ -545,7 +562,7 @@ export async function deleteMissionBackfill(id: string): Promise<DeleteMissionBa
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Failed to remove backfill"));
+        throw new ApiError(getApiErrorMessage(err, "Failed to remove backfill"), response.status);
       }
       const data = (await response.json()) as { result: DeleteMissionBackfillResult };
       return data.result;
@@ -564,7 +581,7 @@ export async function returnReward(input: ReturnRewardInput): Promise<ReturnRewa
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Return reward failed"));
+        throw new ApiError(getApiErrorMessage(err, "Return reward failed"), response.status);
       }
       const data = (await response.json()) as { result: ReturnRewardResult };
       return data.result;
@@ -583,7 +600,7 @@ export async function setSquadGoal(goal: SquadGoal | null): Promise<SquadState> 
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Failed to set squad goal"));
+        throw new ApiError(getApiErrorMessage(err, "Failed to set squad goal"), response.status);
       }
       const data = (await response.json()) as { squad: SquadState };
       return data.squad;
@@ -598,7 +615,7 @@ export async function redeemSquadGoal(): Promise<SquadState> {
       const response = await fetch("/api/parent/squad/redeem", { method: "POST" });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Failed to redeem squad goal"));
+        throw new ApiError(getApiErrorMessage(err, "Failed to redeem squad goal"), response.status);
       }
       const data = (await response.json()) as { squad: SquadState };
       return data.squad;
@@ -613,7 +630,7 @@ export async function claimSquadGoal(): Promise<SquadState> {
       const response = await fetch("/api/public/redeem-squad-goal", { method: "POST" });
       if (!response.ok) {
         const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-        throw new Error(getApiErrorMessage(err, "Failed to claim squad goal"));
+        throw new ApiError(getApiErrorMessage(err, "Failed to claim squad goal"), response.status);
       }
       const data = (await response.json()) as { squad: SquadState };
       return data.squad;
@@ -635,7 +652,7 @@ export async function fetchMissionHistory(
         )}`,
         { cache: "no-store" },
       );
-      if (!response.ok) throw new Error("Failed to load mission history");
+      if (!response.ok) throw new ApiError("Failed to load mission history", response.status);
       const data = (await response.json()) as { history: MissionHistoryEntry[] };
       return data.history;
     },
@@ -651,7 +668,7 @@ export async function fetchNotifications(limit = 100): Promise<NotificationEvent
         { cache: "no-store" },
       );
       if (!response.ok) {
-        throw new Error(response.status === 401 ? "UNAUTHORIZED" : "Failed to load notifications");
+        throw new ApiError(response.status === 401 ? "UNAUTHORIZED" : "Failed to load notifications", response.status);
       }
       const data = (await response.json()) as { notifications: NotificationEvent[] };
       return data.notifications;
@@ -668,7 +685,7 @@ export async function markNotificationsRead(): Promise<MarkNotificationsReadResu
         headers: { "Content-Type": "application/json" },
       });
       if (!response.ok) {
-        throw new Error(response.status === 401 ? "UNAUTHORIZED" : "Failed to mark notifications read");
+        throw new ApiError(response.status === 401 ? "UNAUTHORIZED" : "Failed to mark notifications read", response.status);
       }
       const data = (await response.json()) as { result: MarkNotificationsReadResult };
       return data.result;
@@ -684,7 +701,7 @@ export async function fetchUnreadNotificationCount(): Promise<number> {
         cache: "no-store",
       });
       if (!response.ok) {
-        throw new Error("Failed to load notification count");
+        throw new ApiError("Failed to load notification count", response.status);
       }
       const data = (await response.json()) as { unreadCount: number };
       return data.unreadCount;
@@ -727,7 +744,7 @@ export async function generateAvatar(heroName: string): Promise<string> {
     body: JSON.stringify({ heroName }),
   });
   if (!response.ok) {
-    throw new Error("Avatar generation failed");
+    throw new ApiError("Avatar generation failed", response.status);
   }
   const data = (await response.json()) as { avatarDataUrl: string };
   return data.avatarDataUrl;
@@ -748,7 +765,7 @@ export async function uploadParentMedia(
 
   if (!response.ok) {
     const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-    throw new Error(getApiErrorMessage(err, "Media upload failed"));
+    throw new ApiError(getApiErrorMessage(err, "Media upload failed"), response.status);
   }
 
   const data = (await response.json()) as { url: string };
@@ -776,7 +793,7 @@ export async function createSignedParentMediaUpload(input: {
 
   if (!response.ok) {
     const err = (await response.json().catch(() => ({}))) as ErrorPayload;
-    throw new Error(getApiErrorMessage(err, "Failed to prepare media upload"));
+    throw new ApiError(getApiErrorMessage(err, "Failed to prepare media upload"), response.status);
   }
 
   return (await response.json()) as SignedParentMediaUpload;
@@ -787,7 +804,7 @@ export async function fetchParentSummary(): Promise<ParentSummaryData> {
     async () => {
       const response = await fetch("/api/parent/summary", { cache: "no-store" });
       if (!response.ok) {
-        throw new Error(response.status === 401 ? "UNAUTHORIZED" : "Failed to load summary");
+        throw new ApiError(response.status === 401 ? "UNAUTHORIZED" : "Failed to load summary", response.status);
       }
       return (await response.json()) as ParentSummaryData;
     },

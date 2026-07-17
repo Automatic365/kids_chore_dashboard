@@ -874,6 +874,11 @@ class LocalStore {
   }
 
   redeemSquadGoal(): SquadState {
+    const goal = this.state.squad.squadGoal;
+    if (!goal) throw new Error("No squad goal is set");
+    if (this.state.squad.squadPowerCurrent < goal.targetPower) {
+      throw new Error("Squad goal not reached yet");
+    }
     this.state.squad.squadPowerCurrent = 0;
     this.state.squad.goalCompletionCount = (this.state.squad.goalCompletionCount ?? 0) + 1;
     this.saveToDisk();

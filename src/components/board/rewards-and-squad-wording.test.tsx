@@ -34,6 +34,7 @@ const squad: SquadState = {
   squadPowerMax: 100,
   cycleDate: "2026-04-26",
   squadGoal: null,
+  goalCompletionCount: 0,
 };
 
 describe("Rewards and squad terminology", () => {
@@ -71,6 +72,7 @@ describe("Rewards and squad terminology", () => {
         onLongPressEnd={vi.fn()}
         showSquadWin={false}
         onDismissSquadWin={vi.fn()}
+        onRedeemSquadGoal={vi.fn()}
       />,
     );
 

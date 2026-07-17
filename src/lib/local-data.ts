@@ -1445,6 +1445,12 @@ export async function localRedeemSquadGoal(): Promise<SquadState> {
 
   const db = await getDb();
   const squad = await ensureCurrentCycle(db);
+  if (!squad.squadGoal) {
+    throw new Error("No squad goal is set");
+  }
+  if (squad.squadPowerCurrent < squad.squadGoal.targetPower) {
+    throw new Error("Squad goal not reached yet");
+  }
   const next: SquadState = {
     ...squad,
     squadPowerCurrent: 0,

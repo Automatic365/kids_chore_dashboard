@@ -47,11 +47,39 @@ export function ServiceWorkerRegister() {
     window.addEventListener("error", onWindowError);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
 
+    // When an updated service worker takes control, reload once so the open
+    // page picks up the new bundle instead of running stale JS until the next
+    // manual navigation. Skip the very first install (no prior controller).
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    let refreshing = false;
+    const onControllerChange = () => {
+      if (!hadController || refreshing) {
+        return;
+      }
+      refreshing = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+
+    let updateInterval: number | undefined;
+    let onVisibilityChange: (() => void) | undefined;
+
     void navigator.serviceWorker
       .register("/sw.js")
       .then((registration) => {
-        // Check for updates in the background without forcing reload loops.
         void registration.update();
+
+        // The board runs for days on a tablet without navigation, so poll
+        // for new deploys hourly and whenever the app returns to foreground.
+        updateInterval = window.setInterval(() => {
+          void registration.update();
+        }, 60 * 60 * 1000);
+        onVisibilityChange = () => {
+          if (document.visibilityState === "visible") {
+            void registration.update();
+          }
+        };
+        document.addEventListener("visibilitychange", onVisibilityChange);
       })
       .catch(() => {
         // Non-blocking for browsers that do not support service workers in this context.
@@ -60,6 +88,13 @@ export function ServiceWorkerRegister() {
     return () => {
       window.removeEventListener("error", onWindowError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+      if (updateInterval !== undefined) {
+        window.clearInterval(updateInterval);
+      }
+      if (onVisibilityChange) {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
     };
   }, []);
 

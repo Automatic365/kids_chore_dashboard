@@ -3,6 +3,7 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  ApiError,
   claimReward,
   claimSquadGoal,
   completeMission,
@@ -532,10 +533,17 @@ export function useMissionBoardController(
         }
       } catch (error) {
         reportError(error, { surface: "mission_complete" });
+        if (error instanceof ApiError && error.status < 500) {
+          // Server rejected the completion outright — retrying won't help.
+          setEffectText("MISSION FAILED");
+          window.setTimeout(() => setEffectText(null), 1200);
+          await loadBoard();
+          return;
+        }
         await enqueueCompletion({ id: makeId(), ...payload });
       }
     },
-    [profile, profileId, squad, remoteEnabled, loadHistory, applyProfileEconomy],
+    [profile, profileId, squad, remoteEnabled, loadHistory, applyProfileEconomy, loadBoard],
   );
 
   const undoMissionAction = useCallback(
@@ -673,6 +681,8 @@ export function useMissionBoardController(
         }
       } catch (error) {
         reportError(error, { surface: "mission_undo" });
+        setEffectText("UNDO FAILED");
+        window.setTimeout(() => setEffectText(null), 1200);
         await loadBoard();
       }
     },
@@ -842,6 +852,8 @@ export function useMissionBoardController(
         }
       } catch (error) {
         reportError(error, { surface: "reward_return" });
+        setEffectText("RETURN FAILED");
+        window.setTimeout(() => setEffectText(null), 1200);
         await loadBoard();
       } finally {
         setReturningClaimById((current) => ({ ...current, [claim.id]: false }));
@@ -908,6 +920,8 @@ export function useMissionBoardController(
         }
       } catch (error) {
         reportError(error, { surface: "mission_delete" });
+        setEffectText("DELETE FAILED");
+        window.setTimeout(() => setEffectText(null), 1200);
         await loadBoard();
       }
     },
@@ -941,6 +955,8 @@ export function useMissionBoardController(
         }, 1400);
       } catch (error) {
         reportError(error, { surface: "reward_cost_update" });
+        setEffectText("UPDATE FAILED");
+        window.setTimeout(() => setEffectText(null), 1200);
         await loadBoard();
       } finally {
         setUpdatingRewardById((current) => ({ ...current, [reward.id]: false }));

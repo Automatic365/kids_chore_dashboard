@@ -548,4 +548,25 @@ describe("local store completion rules", () => {
     expect(marked.markedCount).toBe(1);
     expect(store.getUnreadNotificationCount()).toBe(0);
   });
+
+  it("redeems the squad goal only when the target is reached", () => {
+    resetLocalStoreForTests();
+    const store = getLocalStore();
+
+    expect(() => store.redeemSquadGoal()).toThrow("No squad goal is set");
+
+    store.setSquadGoal({
+      title: "Movie Night",
+      targetPower: 50,
+      rewardDescription: "Family movie night",
+    });
+    expect(() => store.redeemSquadGoal()).toThrow("Squad goal not reached yet");
+
+    store.awardSquadPower({ delta: 60 });
+    const redeemed = store.redeemSquadGoal();
+    expect(redeemed.squadPowerCurrent).toBe(0);
+    expect(redeemed.goalCompletionCount).toBe(1);
+
+    expect(() => store.redeemSquadGoal()).toThrow("Squad goal not reached yet");
+  });
 });

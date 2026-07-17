@@ -1265,18 +1265,29 @@ class SupabaseRepository implements Repository {
     if (!admin) throw new Error("Supabase is not configured");
 
     const current = await this.getSquadState();
-    const nextCount = current.goalCompletionCount + 1;
+    if (!current.squadGoal) throw new Error("No squad goal is set");
+    if (current.squadPowerCurrent < current.squadGoal.targetPower) {
+      throw new Error("Squad goal not reached yet");
+    }
 
+    // Compare-and-swap on goal_completion_count and target power so two
+    // simultaneous claims can't both redeem: the loser matches zero rows.
     const { data, error } = await admin
       .from("squad_state")
-      .update({ squad_power_current: 0, goal_completion_count: nextCount })
+      .update({
+        squad_power_current: 0,
+        goal_completion_count: current.goalCompletionCount + 1,
+      })
       .eq("id", 1)
+      .eq("goal_completion_count", current.goalCompletionCount)
+      .gte("squad_power_current", current.squadGoal.targetPower)
       .select(
         "squad_power_current, squad_power_max, cycle_date, squad_goal_title, squad_goal_target_power, squad_goal_reward_description, goal_completion_count",
       )
-      .single();
+      .maybeSingle();
 
     if (error) throw new Error(error.message);
+    if (!data) throw new Error("Squad goal not reached yet");
     return mapSquadRow(data as SquadRow);
   }
 

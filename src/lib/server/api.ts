@@ -45,6 +45,12 @@ export function mapRouteErrorStatus(message: string): number {
   const normalized = message.toLowerCase();
   if (normalized.includes("unauthorized")) return 401;
   if (
+    normalized.includes("not reached") ||
+    normalized.includes("no squad goal")
+  ) {
+    return 409;
+  }
+  if (
     normalized.includes("invalid") ||
     normalized.includes("not found") ||
     normalized.includes("unavailable") ||

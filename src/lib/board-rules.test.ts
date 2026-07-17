@@ -20,6 +20,7 @@ describe("board-rules", () => {
         squadPowerMax: 100,
         cycleDate: "2026-03-06",
         squadGoal: null,
+        goalCompletionCount: 0,
       },
       100,
     );
@@ -35,6 +36,7 @@ describe("board-rules", () => {
           targetPower: 90,
           rewardDescription: "Movie night",
         },
+        goalCompletionCount: 0,
       },
       90,
     );

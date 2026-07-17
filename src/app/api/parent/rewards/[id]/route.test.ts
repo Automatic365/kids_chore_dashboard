@@ -68,7 +68,7 @@ describe("PATCH /api/parent/rewards/[id]", () => {
     const response = await PATCH(request, { params: Promise.resolve({ id: "r1" }) });
     const payload = (await response.json()) as {
       ok: boolean;
-      reward: { targetDaysToEarn: number | null };
+      reward: { targetDaysToEarn: number | null; minDaysBetweenClaims: number | null };
     };
 
     expect(response.status).toBe(200);

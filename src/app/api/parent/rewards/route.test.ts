@@ -92,7 +92,7 @@ describe("/api/parent/rewards", () => {
     const response = await POST(request);
     const payload = (await response.json()) as {
       ok: boolean;
-      reward: { targetDaysToEarn: number | null };
+      reward: { targetDaysToEarn: number | null; minDaysBetweenClaims: number | null };
     };
 
     expect(response.status).toBe(201);

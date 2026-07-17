@@ -2,6 +2,8 @@
 
 import { openDB } from "idb";
 
+import { ApiError } from "@/lib/client-api";
+
 export interface CompletionQueueItem {
   id: string;
   missionId: string;
@@ -66,7 +68,13 @@ export async function flushCompletionQueue(
     try {
       await sender(item);
       await removeQueuedCompletion(item.id);
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) {
+        // The server rejected this completion outright (e.g. mission was
+        // deleted) — drop it so the queue doesn't retry it forever.
+        await removeQueuedCompletion(item.id);
+        continue;
+      }
       // Keep pending items for retry when network/service recovers.
     }
   }
